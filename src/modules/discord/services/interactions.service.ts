@@ -1,14 +1,47 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InteractionResponseType } from 'discord-interactions';
 import { DiscordService } from './discord.service';
+import { OauthService } from '@app/modules/discord/services/oauth.service';
 
 @Injectable()
 export class InteractionsService {
   private readonly logger = new Logger(InteractionsService.name);
+  private readonly commands = [
+    {
+      name: 'test',
+      default_member_permissions: '8',
+      description: 'Test command',
+    },
+    {
+      name: 'create_group',
+      description: 'Create a new group with text and voice channels',
+      options: [
+        {
+          name: 'group_name',
+          description: 'Name of the group to create',
+          type: 3, // STRING type
+          required: true,
+        },
+        {
+          name: 'users',
+          description: 'Users to add to the group (comma-separated mentions)',
+          type: 3, // STRING type
+          required: true,
+        },
+      ],
+    },
 
-  constructor(private discordService: DiscordService) {
+    {
+      name: 'connect',
+      default_member_permissions: '8',
+      description: 'Connect your Github account',
+    },
+  ];
 
-  }
+  constructor(
+    private readonly discordService: DiscordService,
+    private readonly oauthService: OauthService,
+  ) {}
 
   async handleCommand(interaction: any) {
     const { name } = interaction.data;
@@ -16,10 +49,13 @@ export class InteractionsService {
 
     switch (name) {
       case 'test':
-        return this.handleTestCommand(interaction);
+        return this.handleTestCommand();
 
       case 'create_group':
         return this.handleCreateGroupCommand(interaction);
+
+      case 'connect':
+        return this.connect();
 
       default:
         return {
@@ -31,7 +67,7 @@ export class InteractionsService {
     }
   }
 
-  private handleTestCommand(interaction: any) {
+  private handleTestCommand() {
     return {
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
@@ -40,45 +76,108 @@ export class InteractionsService {
     };
   }
 
+  private connect() {
+    const authorizationUrl = this.oauthService.generateAuthorizationUrl();
+    return {
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: `Connect your github account [here](${authorizationUrl})`,
+      },
+    };
+  }
+
   private async handleCreateGroupCommand(interaction: any) {
     try {
-      // Extract the group name from the options
       const groupName = interaction.data.options.find(
         (option) => option.name === 'group_name',
       )?.value;
 
-      if (!groupName) {
+      const usersString = interaction.data.options.find(
+        (option) => option.name === 'users',
+      )?.value;
+
+      if (!groupName || !usersString) {
         return {
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: 'Error: No group name provided',
+            content: 'Error: Group name and users are required',
+            flags: 64, // Ephemeral message
           },
         };
       }
 
-      // Create the group channels and role (deferred to the service for implementation)
-      await this.discordService.createGroupTextAndVoiceChannels(
-        interaction.guild_id,
+      // Parse user mentions
+      const userIds =
+        usersString
+          .match(/<@!?(\d+)>/g)
+          ?.map((mention) => mention.replace(/<@!?(\d+)>/, '$1')) || [];
+
+      if (userIds.length === 0) {
+        return {
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: 'Error: No valid user mentions provided',
+            flags: 64,
+          },
+        };
+      }
+
+      // Create confirmation message
+      await this.discordService.sendConfirmationMessage(
+        interaction.channel_id,
         groupName,
+        userIds,
+        interaction.member.user.id,
       );
 
       return {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: `Group "${groupName}" created successfully with text and voice channels!`,
+          content: `Please wait for all users to confirm by reacting with ✅. The group will be created once everyone confirms.`,
         },
       };
     } catch (error) {
       this.logger.error(`Error creating group: ${error.message}`);
-
       return {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
           content: `Failed to create group: ${error.message}`,
-          // Make the error message only visible to the command invoker
           flags: 64,
         },
       };
+    }
+  }
+
+  async reloadCommands() {
+    try {
+      const endpoint = `https://discord.com/api/v10/applications/${process.env.DISCORD_CLIENT_ID}/commands`;
+
+      const response = await fetch(endpoint, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bot ${process.env.DISCORD_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(this.commands),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          `Failed to reload commands: ${JSON.stringify(errorData)}`,
+        );
+      }
+
+      const result = await response.json();
+      this.logger.log('Successfully reloaded application commands');
+      return {
+        success: true,
+        message: 'Commands reloaded successfully',
+        result,
+      };
+    } catch (error) {
+      this.logger.error('Error reloading commands:', error);
+      throw error;
     }
   }
 }

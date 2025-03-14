@@ -1,12 +1,14 @@
 import { Controller, Get, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { OauthService } from '../services/oauth.service';
+import { DiscordService } from '@app/modules/discord/services/discord.service';
 
 @Controller('oauth2')
 export class OauthController {
-  private githubUsers: any[] = [];
-
-  constructor(private readonly oauthService: OauthService) {}
+  constructor(
+    private readonly oauthService: OauthService,
+    private readonly discordService: DiscordService,
+  ) {}
 
   @Get('/callback')
   async handleOauthCallback(@Query('code') code: string, @Res() res: Response) {
@@ -22,10 +24,14 @@ export class OauthController {
       const connections = await this.oauthService.fetchUserConnections(
         tokenData.access_token,
       );
-
-      console.log('User Connections:', connections);
-      this.githubUsers = connections.filter(
+      const githubConnections = connections.filter(
         (connection) => connection.type === 'github',
+      );
+
+      this.discordService.addGithubUsers(
+        connections
+          .filter((connection) => connection.type === 'github')
+          .map((connection) => connection.name),
       );
 
       // Respond to the user

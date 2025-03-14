@@ -17,7 +17,6 @@ export class HttpService {
     if (options.body) {
       options.body = JSON.stringify(options.body);
     }
-
     const res = await fetch(url, {
       headers: {
         Authorization: `Bot ${process.env.DISCORD_TOKEN}`,

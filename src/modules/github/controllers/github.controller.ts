@@ -11,9 +11,9 @@ export class GithubController {
     @Headers('x-github-event') githubEvent: string,
     @Body() payload: any,
   ) {
+    console.log(payload.repository.name);
     if (githubEvent === 'issues') {
       const action = payload.action;
-
       if (action === 'opened') {
         await this.issuesService.handleIssueOpened(payload);
       } else if (action === 'closed') {

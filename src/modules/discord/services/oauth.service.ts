@@ -39,7 +39,11 @@ export class OauthService {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to exchange code for token');
+        const errorText = await response.text();
+        this.logger.error(
+          `Failed to exchange code for token. Status: ${response.status}, Response: ${errorText}`,
+        );
+        throw new Error(`Failed to exchange code for token: ${errorText}`);
       }
 
       return await response.json();
@@ -51,11 +55,14 @@ export class OauthService {
 
   async fetchUserConnections(accessToken: string): Promise<any[]> {
     try {
-      const response = await fetch('https://discord.com/api/users/@me/connections', {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
+      const response = await fetch(
+        'https://discord.com/api/users/@me/connections',
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
         },
-      });
+      );
 
       if (!response.ok) {
         throw new Error('Failed to fetch user connections');
