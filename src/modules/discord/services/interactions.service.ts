@@ -122,6 +122,18 @@ export class InteractionsService {
         };
       }
 
+      const currentUserId = interaction.member.user.id;
+
+      if (userIds.includes(currentUserId)) {
+        return {
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: 'Error: You cannot include yourself in the group members',
+            flags: 64, // Ephemeral message
+          },
+        };
+      }
+
       // Create confirmation message
       await this.discordService.sendConfirmationMessage(
         interaction.channel_id,
@@ -133,7 +145,8 @@ export class InteractionsService {
       return {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: `Please wait for all users to confirm by reacting with ✅. The group will be created once everyone confirms.`,
+          content: `Group creation request has been sent.`,
+          flags: 64,
         },
       };
     } catch (error) {

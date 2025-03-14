@@ -56,39 +56,6 @@ export class DiscordService {
     }
   }
 
-  async getRoleUsers(roleId: string): Promise<string[] | null> {
-    try {
-      const allMembers = [];
-      let lastId = '0';
-      let hasMore = true;
-
-      while (hasMore) {
-        const endpoint = `guilds/${this.guildId}/members?limit=1000&after=${lastId}`;
-        const response = await this.httpService.discordRequest(endpoint, {
-          method: 'GET',
-        });
-
-        if (response.ok) {
-          const members = await response.json();
-          if (members.length === 0) {
-            hasMore = false;
-          } else {
-            allMembers.push(...members);
-            lastId = members[members.length - 1].user.id;
-          }
-        } else {
-          throw new Error(`Failed to fetch members: ${response.status}`);
-        }
-      }
-
-      const roleMembers = allMembers.filter((m) => m.roles.includes(roleId));
-      return roleMembers;
-    } catch (error) {
-      this.logger.error(`Failed to get role users: ${error.message}`);
-      return null;
-    }
-  }
-
   async sendDiscordMessage(
     channelId: string,
     message: string,
@@ -194,21 +161,6 @@ export class DiscordService {
     }
   }
 
-  async addUserToRole(userId: string, roleId: string): Promise<boolean> {
-    try {
-      await this.httpService.discordRequest(
-        `guilds/${this.guildId}/members/${userId}/roles/${roleId}`,
-        {
-          method: 'PUT',
-        },
-      );
-      return true;
-    } catch (error) {
-      this.logger.error(`Failed to add user to role: ${error.message}`);
-      return false;
-    }
-  }
-
   async sendConfirmationMessage(
     channelId: string,
     groupName: string,
@@ -237,8 +189,13 @@ export class DiscordService {
     );
 
     // Start watching for reactions
-    this.watchConfirmations(channelId, messageData.id, groupName, userIds,creatorId);
-
+    this.watchConfirmations(
+      channelId,
+      messageData.id,
+      groupName,
+      userIds,
+      creatorId,
+    );
 
     return messageData;
   }
@@ -281,10 +238,14 @@ export class DiscordService {
           await this.assignRoleToUser(creatorId, roleId);
         }
 
-        // Send confirmation message
-        await this.sendDiscordMessage(
-          channelId,
-          `Group "${groupName}" has been created and all members have been assigned their roles!`,
+        await this.httpService.discordRequest(
+          `channels/${channelId}/messages/${messageId}`,
+          {
+            method: 'PATCH',
+            body: {
+              content: `Group ${groupName}" has been created successfully!`,
+            },
+          },
         );
       }
     };

@@ -154,9 +154,9 @@ export class IssuesService {
     const parts = repositoryName.split('-');
 
     return {
-      paradigm: parts[1], // "objetos"
-      assignment: `${parts[2]}-${parts[3]}`, // "tp-6"
-      teamName: parts[4].split('_')[0], // "swifties" (remove "_objetos" suffix)
+      paradigm: parts[1],
+      assignment: `${parts[2]}-${parts[3]}`,
+      teamName: parts[4].split('_')[0],
     };
   }
 }
