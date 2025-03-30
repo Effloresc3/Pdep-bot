@@ -347,7 +347,7 @@ export class DiscordService {
 
       const body = JSON.stringify(commands);
       const options = {
-        method: 'GET',
+        method: 'PUT',
         body,
       };
       const response = await this.httpService.discordRequest({
