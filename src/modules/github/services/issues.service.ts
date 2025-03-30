@@ -34,23 +34,11 @@ export class IssuesService {
 
       const message = `📢 Se creo un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver issue](${issueUrl})`;
 
-      if (this.discordService.getGithubUsers().includes(issueCreator)) {
-        const channelId = await this.discordService.getChannelByName(teamName);
-        if (!channelId) {
-          this.logger.error('Group channel not found');
-        }
-        await this.discordService.sendDiscordMessage(channelId, message);
-      } else {
-        const docentesChannelId =
-          await this.discordService.getChannelByName('docentes');
-        if (!docentesChannelId) {
-          this.logger.error('Docentes channel not found');
-        }
-        await this.discordService.sendDiscordMessage(
-          docentesChannelId,
-          message,
-        );
+      const channelId = await this.discordService.getChannelByName(teamName);
+      if (!channelId) {
+        this.logger.error('Group channel not found');
       }
+      await this.discordService.sendDiscordMessage(channelId, message);
 
       this.logger.log('Message sent to Discord channel successfully');
     } catch (error) {
@@ -80,24 +68,11 @@ export class IssuesService {
 
       const message = `📢 Se cerro un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver Issue](${issueUrl})`;
 
-      if (this.discordService.getGithubUsers().includes(issueCreator)) {
-        const channelId = await this.discordService.getChannelByName(teamName);
-        if (!channelId) {
-          this.logger.error('Group channel not found');
-        }
-        await this.discordService.sendDiscordMessage(channelId, message);
-      } else {
-        const docentesChannelId =
-          await this.discordService.getChannelByName('docentes');
-
-        if (!docentesChannelId) {
-          this.logger.error('Docentes channel not found');
-        }
-        await this.discordService.sendDiscordMessage(
-          docentesChannelId,
-          message,
-        );
+      const channelId = await this.discordService.getChannelByName(teamName);
+      if (!channelId) {
+        this.logger.error('Group channel not found');
       }
+      await this.discordService.sendDiscordMessage(channelId, message);
 
       this.logger.log('Message sent to Discord channel successfully');
     } catch (error) {
@@ -114,23 +89,11 @@ export class IssuesService {
     try {
       const { teamName } = this.splitRepositoryName(payload.repository.name);
       const message = `📢 Se dejo un comentario en un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver issue](${issueUrl})`;
-      if (this.discordService.getGithubUsers().includes(issueCreator)) {
-        const channelId = await this.discordService.getChannelByName(teamName);
-        if (!channelId) {
-          this.logger.error('Group channel not found');
-        }
-        await this.discordService.sendDiscordMessage(channelId, message);
-      } else {
-        const docentesChannelId =
-          await this.discordService.getChannelByName('docentes');
-        if (!docentesChannelId) {
-          this.logger.error('Docentes channel not found');
-        }
-        await this.discordService.sendDiscordMessage(
-          docentesChannelId,
-          message,
-        );
+      const channelId = await this.discordService.getChannelByName(teamName);
+      if (!channelId) {
+        this.logger.error('Group channel not found');
       }
+      await this.discordService.sendDiscordMessage(channelId, message);
 
       this.logger.log('Message sent to Discord channel successfully');
     } catch (error) {

@@ -104,10 +104,6 @@ export class DiscordService {
     try {
       const roleId = await this.createRole(groupName);
 
-      const docentesRoleId = await this.getRoleByName('docentes');
-
-      if (!docentesRoleId) this.logger.error('Docentes role not found');
-
       // Get the text category ID
       const textCategoryId = await this.getChannelByName('grupos-de-tps');
       // Get the voice category ID
@@ -124,11 +120,6 @@ export class DiscordService {
         },
         {
           id: roleId,
-          type: OverwriteType.Role,
-          allow: PermissionsBitField.Flags.ViewChannel,
-        },
-        {
-          id: docentesRoleId,
           type: OverwriteType.Role,
           allow: PermissionsBitField.Flags.ViewChannel,
         },
@@ -225,10 +216,10 @@ export class DiscordService {
       })();
     };
 
-    // Check every 15 minutes until done
+    // Check every 40 seconds until done
     const interval = setInterval(
       checkReactions,
-      Duration.fromObject({ minute: 15 }).toMillis(),
+      Duration.fromObject({ minutes: 40 }).toMillis(),
     );
   }
 
@@ -278,13 +269,15 @@ export class DiscordService {
     categoryId?: string,
   ) {
     const endpoint = `guilds/${this.guildId}/channels`;
-
-    const body = JSON.stringify({
-      name: `${channelName.toLowerCase().replace(/\s+/g, '-')}`,
-      type: channelType,
-      parent_id: categoryId,
-      permission_overwrites: permissions,
-    });
+    const body = JSON.stringify(
+      {
+        name: `${channelName.toLowerCase().replace(/\s+/g, '-')}`,
+        type: channelType,
+        parent_id: categoryId,
+        permission_overwrites: permissions,
+      },
+      (_, v) => (typeof v === 'bigint' ? v.toString() : v),
+    );
 
     const options = {
       method: 'POST',
