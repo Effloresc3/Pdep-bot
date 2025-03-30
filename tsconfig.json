@@ -20,7 +20,8 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "paths": {
-      "@app/*": ["src/*"]
+      "@app/*": ["src/*"],
+      "luxon": ["./node_modules/luxon"]
     }
   },
   "include": ["src/**/*", "test/**/*"],

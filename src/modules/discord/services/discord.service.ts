@@ -1,5 +1,24 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@app/common/services/http.service';
+import {
+  ApplicationCommand,
+  Channel,
+  GuildChannel,
+  Message,
+  PermissionsBitField,
+  ReactionEmoji,
+  Role,
+} from 'discord.js';
+import { OverwriteType } from 'discord-api-types/v10';
+import { Duration } from 'luxon';
+import { ChannelTypes } from 'discord-interactions';
+
+interface PermissionOverwriteData {
+  id: string;
+  type: OverwriteType;
+  allow?: bigint;
+  deny?: bigint;
+}
 
 @Injectable()
 export class DiscordService {
@@ -20,19 +39,22 @@ export class DiscordService {
   async getChannelByName(channelName: string): Promise<string | null> {
     try {
       const endpoint = `guilds/${this.guildId}/channels`;
-      const response = await this.httpService.discordRequest(endpoint, {
-        method: 'GET',
+      const response = await this.httpService.discordRequest({
+        endpoint,
+        options: {
+          method: 'GET',
+        },
       });
 
-      if (response.ok) {
-        const channels = await response.json();
-        console.log(channels);
-        const channel = channels.find((c) => c.name === channelName);
-        return channel ? channel.id : null;
-      }
-      return null;
+      const channels: GuildChannel[] =
+        (await response.json()) as GuildChannel[];
+
+      const channel = channels.find((c) => c.name === channelName);
+
+      return channel?.id;
     } catch (error) {
-      this.logger.error(`Failed to get channel by name: ${error.message}`);
+      this.logger.error(`Failed to get channel by name: ${error}`);
+
       return null;
     }
   }
@@ -40,18 +62,18 @@ export class DiscordService {
   async getRoleByName(roleName: string): Promise<string | null> {
     try {
       const endpoint = `guilds/${this.guildId}/roles`;
-      const response = await this.httpService.discordRequest(endpoint, {
-        method: 'GET',
+      const response = await this.httpService.discordRequest({
+        endpoint,
+        options: {
+          method: 'GET',
+        },
       });
 
-      if (response.ok) {
-        const roles = await response.json();
-        const role = roles.find((r) => r.name === roleName);
-        return role ? role.id : null;
-      }
-      return null;
+      const roles: Role[] = (await response.json()) as Role[];
+      const role: Role = roles.find((r) => r.name === roleName);
+      return role?.id;
     } catch (error) {
-      this.logger.error(`Failed to get role by name: ${error.message}`);
+      this.logger.error(`Failed to get role by name: ${error}`);
       return null;
     }
   }
@@ -59,104 +81,79 @@ export class DiscordService {
   async sendDiscordMessage(
     channelId: string,
     message: string,
-  ): Promise<boolean> {
+  ): Promise<Message> {
     try {
-      const body = { content: message };
-      const response = await this.httpService.discordRequest(
-        `channels/${channelId}/messages`,
-        {
-          method: 'POST',
-          body,
-        },
-      );
+      const body = JSON.stringify({ message });
+      const endpoint = `channels/${channelId}/messages`;
+      const options = {
+        method: 'POST',
+        body: body,
+      };
+
+      const response = await this.httpService.discordRequest({
+        endpoint,
+        options,
+      });
 
       this.logger.log('Message sent successfully');
-      return true;
+      return (await response.json()) as Message;
     } catch (error) {
-      this.logger.error(`Failed to send message: ${error.message}`);
-      return false;
+      this.logger.error(`Failed to send message: ${error}`);
     }
   }
 
   async createGroupTextAndVoiceChannels(groupName: string): Promise<boolean> {
     try {
-      // Create role for the group
-      const roleResponse = await this.httpService.discordRequest(
-        `guilds/${this.guildId}/roles`,
-        {
-          method: 'POST',
-          body: {
-            name: groupName,
-            permissions: '0',
-            color: Math.floor(Math.random() * 16777215),
-            mentionable: true,
-          },
-        },
-      );
+      const roleId = await this.createRole(groupName);
 
-      const roleData = await roleResponse.json();
-      const roleId = roleData.id;
-
-      // Get the docentes role ID
       const docentesRoleId = await this.getRoleByName('docentes');
-      if (!docentesRoleId) {
-        throw new Error('Docentes role not found');
-      }
+
+      if (!docentesRoleId) this.logger.error('Docentes role not found');
 
       // Get the text category ID
       const textCategoryId = await this.getChannelByName('grupos-de-tps');
       // Get the voice category ID
       const voiceCategoryId = await this.getChannelByName('grupos-de-tps-voz');
 
-      console.log(textCategoryId, voiceCategoryId);
+      if (!textCategoryId || !voiceCategoryId)
+        this.logger.error('Required categories not found');
 
-      if (!textCategoryId || !voiceCategoryId) {
-        throw new Error('Required categories not found');
-      }
-
-      const permissionOverwrites = [
+      const permissionOverwrites: PermissionOverwriteData[] = [
         {
-          id: this.guildId, // @everyone role
-          type: 0,
-          deny: '1024', // VIEW_CHANNEL permission
+          id: this.guildId,
+          type: OverwriteType.Role,
+          deny: PermissionsBitField.Flags.ViewChannel,
         },
         {
-          id: roleId, // group role
-          type: 0,
-          allow: '1024', // VIEW_CHANNEL permission
+          id: roleId,
+          type: OverwriteType.Role,
+          allow: PermissionsBitField.Flags.ViewChannel,
         },
         {
-          id: docentesRoleId, // docentes role
-          type: 0,
-          allow: '1024', // VIEW_CHANNEL permission
+          id: docentesRoleId,
+          type: OverwriteType.Role,
+          allow: PermissionsBitField.Flags.ViewChannel,
         },
       ];
 
       // Create text channel in grupos-de-tps category
-      await this.httpService.discordRequest(`guilds/${this.guildId}/channels`, {
-        method: 'POST',
-        body: {
-          name: `${groupName.toLowerCase().replace(/\s+/g, '-')}`,
-          type: 0, // GUILD_TEXT
-          parent_id: textCategoryId,
-          permission_overwrites: permissionOverwrites,
-        },
-      });
+      await this.createChannel(
+        groupName,
+        ChannelTypes.GUILD_TEXT,
+        permissionOverwrites,
+        textCategoryId,
+      );
 
-      // Create voice channel in grupos-de-tp-voz category
-      await this.httpService.discordRequest(`guilds/${this.guildId}/channels`, {
-        method: 'POST',
-        body: {
-          name: groupName,
-          type: 2, // GUILD_VOICE
-          parent_id: voiceCategoryId,
-          permission_overwrites: permissionOverwrites,
-        },
-      });
+      await this.createChannel(
+        groupName,
+        ChannelTypes.GUILD_VOICE,
+        permissionOverwrites,
+        voiceCategoryId,
+      );
 
       return true;
     } catch (error) {
-      this.logger.error(`Failed to create group channels: ${error.message}`);
+      this.logger.error(`Failed to create group channels: ${error}`);
       return false;
     }
   }
@@ -168,25 +165,12 @@ export class DiscordService {
     creatorId: string,
   ): Promise<any> {
     const userMentions = userIds.map((id) => `<@${id}>`).join(', ');
-    const message = `Group Creation Request for "${groupName}"\n\nCreator: <@${creatorId}>\nInvited Users: ${userMentions}\n\nPlease react with ✅ to confirm joining the group.`;
-
-    const response = await this.httpService.discordRequest(
-      `channels/${channelId}/messages`,
-      {
-        method: 'POST',
-        body: { content: message },
-      },
+    const message = `Solicitud de Creación de Grupo para "${groupName}"\n\nCreador: <@${creatorId}>\nUsuarios Invitados: ${userMentions}\n\nPor favor, reacciona con ✅ para confirmar que te unis al grupo.`;
+    const messageData: Message = await this.sendDiscordMessage(
+      channelId,
+      message,
     );
-
-    const messageData = await response.json();
-
-    // Add the checkmark reaction
-    await this.httpService.discordRequest(
-      `channels/${channelId}/messages/${messageData.id}/reactions/✅/@me`,
-      {
-        method: 'PUT',
-      },
-    );
+    await this.reactMessage(channelId, messageData.id);
 
     // Start watching for reactions
     this.watchConfirmations(
@@ -207,66 +191,189 @@ export class DiscordService {
     requiredUserIds: string[],
     creatorId: string,
   ) {
-    const checkReactions = async () => {
-      const response = await this.httpService.discordRequest(
-        `channels/${channelId}/messages/${messageId}/reactions/✅`,
-        {
-          method: 'GET',
-        },
-      );
+    const checkReactions = () => {
+      void (async () => {
+        try {
+          const reactions: ReactionEmoji[] = await this.getMessageReactions(
+            channelId,
+            messageId,
+          );
+          const confirmedUsers = reactions.map((reaction) => reaction.id);
 
-      const reactions = await response.json();
-      const confirmedUsers = reactions.map((r) => r.id);
+          const allConfirmed = requiredUserIds.every((userId) =>
+            confirmedUsers.includes(userId),
+          );
 
-      // Check if all required users have reacted
-      const allConfirmed = requiredUserIds.every((userId) =>
-        confirmedUsers.includes(userId),
-      );
+          if (allConfirmed) {
+            clearInterval(interval);
 
-      if (allConfirmed) {
-        clearInterval(interval);
+            await this.createGroupTextAndVoiceChannels(groupName);
 
-        // Create the group and assign roles
-        await this.createGroupTextAndVoiceChannels(groupName);
+            // Assign roles to all users
+            const roleId = await this.getRoleByName(groupName);
+            requiredUserIds.push(creatorId);
+            await Promise.all(
+              requiredUserIds.map((userId) =>
+                this.assignRoleToUser(userId, roleId),
+              ),
+            );
 
-        // Assign roles to all users
-        const roleId = await this.getRoleByName(groupName);
-        if (roleId) {
-          for (const userId of requiredUserIds) {
-            await this.assignRoleToUser(userId, roleId);
+            const message = `El grupo "${groupName}" ha sido creado exitosamente!`;
+            await this.sendDiscordMessage(channelId, message);
           }
-          await this.assignRoleToUser(creatorId, roleId);
+        } catch (error) {
+          this.logger.error(`Error checking reactions: ${error}`);
         }
-
-        await this.httpService.discordRequest(
-          `channels/${channelId}/messages/${messageId}`,
-          {
-            method: 'PATCH',
-            body: {
-              content: `Group ${groupName}" has been created successfully!`,
-            },
-          },
-        );
-      }
+      })();
     };
 
-    // Check every 5 seconds for 5 minutes
-    const interval = setInterval(checkReactions, 5000);
-    setTimeout(() => {
-      clearInterval(interval);
-      this.sendDiscordMessage(
-        channelId,
-        `Group creation request for "${groupName}" has expired.`,
-      );
-    }, 300000); // 5 minutes timeout
+    // Check every 15 minutes until done
+    const interval = setInterval(
+      checkReactions,
+      Duration.fromObject({ minute: 15 }).toMillis(),
+    );
   }
 
   async assignRoleToUser(userId: string, roleId: string): Promise<void> {
-    await this.httpService.discordRequest(
-      `guilds/${this.guildId}/members/${userId}/roles/${roleId}`,
-      {
-        method: 'PUT',
-      },
-    );
+    const endpoint = `guilds/${this.guildId}/members/${userId}/roles/${roleId}`;
+    const options = { method: 'PUT' };
+
+    try {
+      await this.httpService.discordRequest({ endpoint, options });
+    } catch (error) {
+      this.logger.error(`Failed to assign role to user: ${error}`);
+      throw error;
+    }
+  }
+
+  private async createRole(roleName: string) {
+    const endpoint = `guilds/${this.guildId}/roles`;
+    const body = JSON.stringify({
+      name: roleName,
+      permissions: '0',
+      color: Math.floor(Math.random() * 16777215),
+      mentionable: true,
+    });
+    const options = {
+      method: 'POST',
+      body: body,
+    };
+
+    try {
+      const roleResponse = await this.httpService.discordRequest({
+        endpoint,
+        options,
+      });
+
+      const role: Role = (await roleResponse.json()) as Role;
+      return role?.id;
+    } catch (error) {
+      this.logger.error(`Failed to create role ${roleName}: ${error}`);
+      throw error;
+    }
+  }
+
+  private async createChannel(
+    channelName: string,
+    channelType: number,
+    permissions: PermissionOverwriteData[],
+    categoryId?: string,
+  ) {
+    const endpoint = `guilds/${this.guildId}/channels`;
+
+    const body = JSON.stringify({
+      name: `${channelName.toLowerCase().replace(/\s+/g, '-')}`,
+      type: channelType,
+      parent_id: categoryId,
+      permission_overwrites: permissions,
+    });
+
+    const options = {
+      method: 'POST',
+      body,
+    };
+
+    try {
+      const response = await this.httpService.discordRequest({
+        endpoint: endpoint,
+        options: options,
+      });
+      const channel = (await response.json()) as Channel;
+      return channel.id;
+    } catch (error) {
+      this.logger.error(`Failed to create channel ${channelName}: ${error}`);
+      throw error;
+    }
+  }
+
+  private async reactMessage(channelId: string, messageId: string) {
+    const endpoint = `channels/${channelId}/messages/${messageId}/reactions/✅/@me`;
+    const options = {
+      method: 'PUT',
+    };
+
+    try {
+      const response = await this.httpService.discordRequest({
+        endpoint: endpoint,
+        options: options,
+      });
+      return (await response.json()) as ReactionEmoji;
+    } catch (error) {
+      this.logger.error(`Failed to react to message: ${error}`);
+      throw error;
+    }
+  }
+
+  private async getMessageReactions(channelId: string, messageId: string) {
+    const reactionEndpoint = `channels/${channelId}/messages/${messageId}/reactions/✅`;
+    const reactionOptions = {
+      method: 'GET',
+    };
+
+    try {
+      const response = await this.httpService.discordRequest({
+        endpoint: reactionEndpoint,
+        options: reactionOptions,
+      });
+
+      return (await response.json()) as ReactionEmoji[];
+    } catch (error) {
+      this.logger.error(`Failed to react to message: ${error}`);
+      throw error;
+    }
+  }
+
+  async reloadCommands(commands: unknown) {
+    try {
+      const endpoint = `applications/${process.env.DISCORD_CLIENT_ID}/commands`;
+
+      const body = JSON.stringify(commands);
+      const options = {
+        method: 'GET',
+        body,
+      };
+      const response = await this.httpService.discordRequest({
+        endpoint: endpoint,
+        options: options,
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json()) as Error;
+        this.logger.log(
+          `Failed to reload commands: ${JSON.stringify(errorData)}`,
+        );
+      }
+
+      const result = (await response.json()) as ApplicationCommand;
+      this.logger.log('Successfully reloaded application commands');
+      return {
+        success: true,
+        message: 'Commands reloaded successfully',
+        result,
+      };
+    } catch (error) {
+      this.logger.error('Error reloading commands:', error);
+      throw error;
+    }
   }
 }

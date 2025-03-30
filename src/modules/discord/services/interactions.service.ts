@@ -1,7 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InteractionResponseType } from 'discord-interactions';
+import {
+  InteractionResponseFlags,
+  InteractionResponseType,
+} from 'discord-interactions';
 import { DiscordService } from './discord.service';
 import { OauthService } from '@app/modules/discord/services/oauth.service';
+import { ApplicationCommand } from 'discord.js';
+import { DiscordInteraction } from '@app/modules/discord/models/discord-interaction';
+
+enum Commands {
+  test = 'test',
+  create_group = 'create_group',
+  connect = 'connect',
+}
+
+interface InteractionResponse {
+  type: InteractionResponseType;
+  data: {
+    content: string;
+    flags?: number;
+  };
+}
 
 @Injectable()
 export class InteractionsService {
@@ -43,40 +62,41 @@ export class InteractionsService {
     private readonly oauthService: OauthService,
   ) {}
 
-  async handleCommand(interaction: any) {
-    const { name } = interaction.data;
-    this.logger.log(`Handling command: ${name}`);
+  async handleCommand(interaction: DiscordInteraction): Promise<unknown> {
+    const name = interaction.data.name;
 
-    switch (name) {
-      case 'test':
-        return this.handleTestCommand();
-
-      case 'create_group':
-        return this.handleCreateGroupCommand(interaction);
-
-      case 'connect':
-        return this.connect();
-
-      default:
-        return {
+    const eventsDictionary: Record<
+      Commands | 'default',
+      (interaction: DiscordInteraction) => Promise<unknown>
+    > = {
+      [Commands.test]: async () => Promise.resolve(this.handleTestCommand()),
+      [Commands.create_group]: async (interaction) =>
+        this.handleCreateGroupCommand(interaction),
+      [Commands.connect]: async () => Promise.resolve(this.connect()),
+      default: async (interaction) =>
+        Promise.resolve({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: `Command not implemented: ${name}`,
+            content: `Command not implemented: ${interaction.data.name}`,
           },
-        };
-    }
+        }),
+    };
+
+    const handler =
+      name in Commands
+        ? eventsDictionary[name as Commands]
+        : eventsDictionary['default'];
+    return handler(interaction);
   }
 
-  private handleTestCommand() {
+  private handleTestCommand(): InteractionResponse {
     return {
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-      data: {
-        content: 'Hello! The test command works!',
-      },
+      data: { content: 'Hello! The test command works!' },
     };
   }
 
-  private connect() {
+  private connect(): InteractionResponse {
     const authorizationUrl = this.oauthService.generateAuthorizationUrl();
     return {
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -86,7 +106,9 @@ export class InteractionsService {
     };
   }
 
-  private async handleCreateGroupCommand(interaction: any) {
+  private async handleCreateGroupCommand(
+    interaction: DiscordInteraction,
+  ): Promise<InteractionResponse> {
     try {
       const groupName = interaction.data.options.find(
         (option) => option.name === 'group_name',
@@ -100,8 +122,8 @@ export class InteractionsService {
         return {
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: 'Error: Group name and users are required',
-            flags: 64, // Ephemeral message
+            content: 'Error: El nombre del grupo y los usuarios son requeridos',
+            flags: InteractionResponseFlags.EPHEMERAL,
           },
         };
       }
@@ -116,8 +138,9 @@ export class InteractionsService {
         return {
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: 'Error: No valid user mentions provided',
-            flags: 64,
+            content:
+              'Error: No se proporcionaron menciones de usuarios válidas',
+            flags: InteractionResponseFlags.EPHEMERAL,
           },
         };
       }
@@ -128,8 +151,9 @@ export class InteractionsService {
         return {
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: 'Error: You cannot include yourself in the group members',
-            flags: 64, // Ephemeral message
+            content:
+              'Error: No puedes incluirte a ti mismo entre los miembros del grupo',
+            flags: InteractionResponseFlags.EPHEMERAL,
           },
         };
       }
@@ -145,52 +169,23 @@ export class InteractionsService {
       return {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: `Group creation request has been sent.`,
-          flags: 64,
+          content: `La solicitud de creación del grupo ha sido enviada.`,
+          flags: InteractionResponseFlags.EPHEMERAL,
         },
       };
     } catch (error) {
-      this.logger.error(`Error creating group: ${error.message}`);
+      this.logger.error(`Error creating group: ${error}`);
       return {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: `Failed to create group: ${error.message}`,
-          flags: 64,
+          content: `Error al crear el grupo: ${error}`,
+          flags: InteractionResponseFlags.EPHEMERAL,
         },
       };
     }
   }
 
   async reloadCommands() {
-    try {
-      const endpoint = `https://discord.com/api/v10/applications/${process.env.DISCORD_CLIENT_ID}/commands`;
-
-      const response = await fetch(endpoint, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bot ${process.env.DISCORD_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(this.commands),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(
-          `Failed to reload commands: ${JSON.stringify(errorData)}`,
-        );
-      }
-
-      const result = await response.json();
-      this.logger.log('Successfully reloaded application commands');
-      return {
-        success: true,
-        message: 'Commands reloaded successfully',
-        result,
-      };
-    } catch (error) {
-      this.logger.error('Error reloading commands:', error);
-      throw error;
-    }
+    return this.discordService.reloadCommands(this.commands);
   }
 }

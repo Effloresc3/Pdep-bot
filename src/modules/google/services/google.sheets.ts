@@ -7,12 +7,6 @@ import { OAuth2Client } from 'google-auth-library';
 export class GoogleSheetsService {
   private readonly logger = new Logger(GoogleSheetsService.name);
 
-  // Define scopes for Google Sheets API access
-  private readonly SCOPES = [
-    'https://www.googleapis.com/auth/spreadsheets.readonly',
-    'https://www.googleapis.com/auth/spreadsheets', // For write access
-  ];
-
   private readonly clientId: string;
   private readonly clientSecret: string;
   private readonly refreshToken: string;
@@ -20,7 +14,6 @@ export class GoogleSheetsService {
   private readonly spreadSheetId: string;
 
   constructor(private configService: ConfigService) {
-    // Load credentials from environment variables
     this.clientId = this.configService.get<string>('SHEETS_CLIENT_ID');
     this.clientSecret = this.configService.get<string>('SHEETS_CLIENT_SECRET');
     this.refreshToken = this.configService.get<string>('GOOGLE_REFRESH_TOKEN');
@@ -36,26 +29,19 @@ export class GoogleSheetsService {
     }
   }
 
-  /**
-   * Authorizes with Google API using OAuth2
-   */
   authorize(): OAuth2Client {
     try {
-      // Create OAuth client using environment variables
       const oauth2Client = new OAuth2Client({
         clientId: this.clientId,
         clientSecret: this.clientSecret,
         redirectUri: this.redirectUri,
       });
 
-      // Set credentials using the refresh token
       if (this.refreshToken) {
         oauth2Client.setCredentials({ refresh_token: this.refreshToken });
         this.logger.debug('Using refresh token from environment variables');
         return oauth2Client;
       }
-
-      // If no refresh token is available, throw an error
       this.logger.error(
         'No refresh token available. Authentication cannot proceed.',
       );
@@ -63,14 +49,11 @@ export class GoogleSheetsService {
         'Missing Google API refresh token. Please set GOOGLE_REFRESH_TOKEN environment variable.',
       );
     } catch (error) {
-      this.logger.error(`Authorization failed: ${error.message}`);
+      this.logger.error(`Authorization failed: ${error}`);
       throw error;
     }
   }
 
-  /**
-   * Creates a sheets client with proper authentication
-   */
   private getSheetsClient(): sheets_v4.Sheets {
     const auth = this.authorize();
     return google.sheets({ version: 'v4', auth } as sheets_v4.Options);
@@ -86,25 +69,26 @@ export class GoogleSheetsService {
       const column = `Grupo de ${paradigm}`;
       const sheets = this.getSheetsClient();
 
-      // First, get the sheet data
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: `${sheetName}!A1:BA`, // Adjust range as needed
+        range: `${sheetName}!A1:BA`,
       });
 
       const values = response.data.values;
       if (!values) {
-        throw new Error('No data found in the sheet');
+        this.logger.error('No data found in the sheet');
       }
 
       // Find the column index that matches our column name
       const headerRow = values[0];
       const columnIndex = headerRow.findIndex(
-        (header) => header?.toLowerCase() === column.toLowerCase(),
+        (header) =>
+          typeof header === 'string' &&
+          header.toLowerCase() === column.toLowerCase(),
       );
 
       if (columnIndex === -1) {
-        throw new Error(`Column "${column}" not found`);
+        this.logger.error(`Column "${column}" not found`);
       }
 
       // Find all rows that contain the group name in the correct column
@@ -124,7 +108,7 @@ export class GoogleSheetsService {
 
       return matchingRows;
     } catch (error) {
-      this.logger.error(`Failed to get group rows: ${error.message}`);
+      this.logger.error(`Failed to get group rows: ${error}`);
       throw error;
     }
   }
@@ -136,42 +120,36 @@ export class GoogleSheetsService {
     sheetName: string,
   ): Promise<number> {
     try {
-      const sheets = await this.getSheetsClient();
+      const sheets = this.getSheetsClient();
 
-      // Get the sheet data
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: `${sheetName}!A1:BA`, // Adjust range as needed
+        range: `${sheetName}!A1:BA`,
       });
       const columnNanme = `${paradigm}${tp}`;
       const values = response.data.values;
       if (!values) {
-        throw new Error('No data found in the sheet');
+        this.logger.error('No data found in the sheet');
       }
 
       // Find the column index that matches the TP name
       const headerRow = values[0];
-      headerRow.forEach((header, index) => {
-        const processedValue = header
-          ?.toLowerCase()
-          .replace(/\r?\n/g, '')
-          .trim();
-        this.logger.log(`Column ${index + 1}: ${processedValue}`);
-      });
+
       const columnIndex = headerRow.findIndex(
         (header) =>
+          typeof header === 'string' &&
           header?.toLowerCase().replace(/\r?\n/g, '').trim() ===
-          columnNanme.toLowerCase().trim(),
+            columnNanme.toLowerCase().trim(),
       );
 
       if (columnIndex === -1) {
-        throw new Error(`Column with TP "${columnNanme}" not found`);
+        this.logger.error(`Column with TP "${columnNanme}" not found`);
       }
 
       // Return 1-based column index (as Google Sheets uses 1-based indices)
       return columnIndex + 1;
     } catch (error) {
-      this.logger.error(`Failed to get TP column: ${error.message}`);
+      this.logger.error(`Failed to get TP column: ${error}`);
       throw error;
     }
   }
@@ -184,7 +162,7 @@ export class GoogleSheetsService {
     newStatus: string,
   ): Promise<void> {
     try {
-      const sheets = await this.getSheetsClient();
+      const sheets = this.getSheetsClient();
 
       // First, get the rows for the group
       const rows = await this.getGroupRows(
@@ -214,15 +192,15 @@ export class GoogleSheetsService {
         sheet?.data?.[0]?.rowData?.[0]?.values?.[0]?.dataValidation;
 
       if (!validation?.condition?.values) {
-        throw new Error('No dropdown validation found for the status cell');
+        this.logger.error('No dropdown validation found for the status cell');
       }
 
       const validValues = validation.condition.values.map(
-        (v) => v.userEnteredValue,
+        (value) => value.userEnteredValue,
       );
 
       if (!validValues.includes(newStatus)) {
-        throw new Error(
+        this.logger.error(
           `Invalid status: ${newStatus}. Must be one of: ${validValues.join(', ')}`,
         );
       }
@@ -243,21 +221,27 @@ export class GoogleSheetsService {
         `Successfully updated status to ${newStatus} for group ${groupName} in ${tp}`,
       );
     } catch (error) {
-      this.logger.error(`Failed to update TP status: ${error.message}`);
+      this.logger.error(`Failed to update TP status: ${error}`);
       throw error;
     }
   }
 
   private columnToLetter(column: number): string {
-    let letter = '';
-    let temp = column;
-
-    while (temp > 0) {
-      temp--;
-      letter = String.fromCharCode(65 + (temp % 26)) + letter;
-      temp = Math.floor(temp / 26);
+    if (column <= 0) {
+      return '';
     }
 
-    return letter;
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let result = '';
+    let remaining = column;
+
+    while (remaining > 0) {
+      remaining--;
+      const currentChar = alphabet[remaining % 26];
+      result = currentChar + result;
+      remaining = Math.floor(remaining / 26);
+    }
+
+    return result;
   }
 }

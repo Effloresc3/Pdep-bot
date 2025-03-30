@@ -1,5 +1,12 @@
-import { Controller, Post, Body, Headers, HttpCode } from '@nestjs/common';
+import { Controller, Post, Body, Headers, HttpCode, Get } from '@nestjs/common';
+
 import { IssuesService } from '../services/issues.service';
+import { GitHubIssuePayload } from '@app/modules/github/models/github-interfaces';
+
+enum Events {
+  issues = 'issues',
+  issue_comment = 'issue_comment',
+}
 
 @Controller('webhook')
 export class GithubController {
@@ -8,20 +15,23 @@ export class GithubController {
   @Post('')
   @HttpCode(202)
   async handleWebhook(
-    @Headers('x-github-event') githubEvent: string,
-    @Body() payload: any,
+    @Headers('x-github-event') githubEvent: Events,
+    @Body() payload: GitHubIssuePayload,
   ) {
-    console.log(payload.repository.name);
-    if (githubEvent === 'issues') {
-      const action = payload.action;
-      if (action === 'opened') {
-        await this.issuesService.handleIssueOpened(payload);
-      } else if (action === 'closed') {
-        await this.issuesService.handleIssueClosed(payload);
-      }
-    } else if (githubEvent === 'issue_comment') {
-      await this.issuesService.handleIssueComment(payload);
-    }
+    const eventsDictionary: Record<Events, () => Promise<void>> = {
+      [Events.issues]: async () => {
+        const action = payload.action;
+        if (action === 'opened') {
+          await this.issuesService.handleIssueOpened(payload);
+        } else if (action === 'closed') {
+          await this.issuesService.handleIssueClosed(payload);
+        }
+      },
+      [Events.issue_comment]: async () =>
+        await this.issuesService.handleIssueComment(payload),
+    };
+
+    await eventsDictionary[githubEvent]?.();
 
     return { message: 'Accepted' };
   }

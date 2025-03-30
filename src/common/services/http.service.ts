@@ -1,23 +1,24 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+export interface DiscordRequestInput {
+  endpoint: string;
+  options: RequestInit;
+  retryCount?: number;
+}
+
+type Data = { retry_after: number };
+
 @Injectable()
 export class HttpService {
   private readonly logger = new Logger(HttpService.name);
 
-  constructor() {}
+  async discordRequest(input: DiscordRequestInput): Promise<Response> {
+    const { endpoint, options, retryCount = 0 } = input;
 
-  async discordRequest(
-    endpoint: string,
-    options: any,
-    retryCount = 0,
-  ): Promise<Response> {
     const MAX_RETRIES = 3;
     const url = 'https://discord.com/api/v10/' + endpoint;
 
-    if (options.body) {
-      options.body = JSON.stringify(options.body);
-    }
-    const res = await fetch(url, {
+    const response = await fetch(url, {
       headers: {
         Authorization: `Bot ${process.env.DISCORD_TOKEN}`,
         'Content-Type': 'application/json; charset=UTF-8',
@@ -28,9 +29,9 @@ export class HttpService {
     });
 
     // Handle rate limiting
-    if (res.status === 429 && retryCount < MAX_RETRIES) {
-      const data = await res.json();
-      const retryAfter = data.retry_after || 1;
+    if (response.status === 429 && retryCount < MAX_RETRIES) {
+      const data: Data = (await response.json()) as Data;
+      const retryAfter: number = data.retry_after || 1;
       this.logger.warn(
         `Rate limited! Retry ${retryCount + 1}/${MAX_RETRIES} after ${retryAfter} seconds...`,
       );
@@ -38,15 +39,18 @@ export class HttpService {
       await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
 
       // Retry with incremented counter
-      return this.discordRequest(endpoint, options, retryCount + 1);
+      return this.discordRequest(input);
     }
 
-    if (!res.ok) {
-      const data = await res.json();
-      this.logger.error(`HTTP Error ${res.status}: ${JSON.stringify(data)}`);
+    if (!response.ok) {
+      const data: unknown = await response.json();
+      this.logger.error(
+        `HTTP Error ${response.status}: ${JSON.stringify(data)}`,
+      );
+
       throw new Error(JSON.stringify(data));
     }
 
-    return res;
+    return response;
   }
 }

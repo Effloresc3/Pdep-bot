@@ -6,10 +6,10 @@ services:
       dockerfile: Dockerfile
     environment:
       NODE_ENV: development
+      TS_NODE_PROJECT: tsconfig.json
     ports:
       - "3000:3000"
     volumes:
       - ./:/app
-      - /app/node_modules
-      # Removed the /app/dist volume mount
+      # Don't exclude node_modules or dist - let the container manage these
     command: npm run start:dev

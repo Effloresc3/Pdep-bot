@@ -10,12 +10,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Request } from 'express';
-import {
-  InteractionResponseType,
-  InteractionType,
-  verifyKey,
-} from 'discord-interactions';
+import { InteractionResponseType, verifyKey } from 'discord-interactions';
 import { InteractionsService } from '../services/interactions.service';
+import { InteractionType } from 'discord-api-types/v10';
+import { DiscordInteraction } from '../models/discord-interaction';
 
 @Controller('interactions')
 export class InteractionsController {
@@ -29,7 +27,7 @@ export class InteractionsController {
     @Headers('x-signature-ed25519') signature: string,
     @Headers('x-signature-timestamp') timestamp: string,
     @Req() req: RawBodyRequest<Request>,
-    @Body() body: any,
+    @Body() body: DiscordInteraction,
   ) {
     const rawBody = req.rawBody ? req.rawBody.toString() : JSON.stringify(body);
     const isValidRequest = await verifyKey(
@@ -42,11 +40,11 @@ export class InteractionsController {
       throw new UnauthorizedException('Invalid request signature');
     }
     switch (body.type) {
-      case InteractionType.PING:
+      case InteractionType.Ping:
         return { type: InteractionResponseType.PONG };
-      case InteractionType.APPLICATION_COMMAND:
+      case InteractionType.ApplicationCommand:
         return this.interactionsService.handleCommand(body);
-      case InteractionType.MESSAGE_COMPONENT:
+      case InteractionType.MessageComponent:
         return;
       default:
         return {

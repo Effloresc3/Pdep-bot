@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DiscordService } from '../../discord/services/discord.service';
 import { GoogleSheetsService } from '@app/modules/google/services/google.sheets';
+import { GitHubIssuePayload } from '@app/modules/github/models/github-interfaces';
 
 @Injectable()
 export class IssuesService {
@@ -11,7 +12,7 @@ export class IssuesService {
     private readonly googleSheetsService: GoogleSheetsService,
   ) {}
 
-  async handleIssueOpened(payload): Promise<void> {
+  async handleIssueOpened(payload: GitHubIssuePayload): Promise<void> {
     const { issue } = payload;
     const issueTitle = issue.title;
     const issueBody = issue.body;
@@ -22,27 +23,29 @@ export class IssuesService {
     const { paradigm, assignment, teamName } = this.splitRepositoryName(
       payload.repository.name,
     );
-    console.log(paradigm, assignment, teamName);
     try {
-      const channelId = await this.discordService.getChannelByName(teamName);
-
-      const docentesChannelId =
-        await this.discordService.getChannelByName('docentes');
-      this.googleSheetsService.updateTpStatus(
+      await this.googleSheetsService.updateTpStatus(
         'Alumnes',
         paradigm,
         teamName,
         assignment,
         'Correcciones pendientes',
       );
-      if (!channelId) {
-        throw new Error('Discord channel not found');
-      }
+
+      const message = `📢 Se creo un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver issue](${issueUrl})`;
+
       if (this.discordService.getGithubUsers().includes(issueCreator)) {
-        const message = `📢 Se creo un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver issue](${issueUrl})`;
+        const channelId = await this.discordService.getChannelByName(teamName);
+        if (!channelId) {
+          this.logger.error('Group channel not found');
+        }
         await this.discordService.sendDiscordMessage(channelId, message);
       } else {
-        const message = `📢 Se creo un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver issue](${issueUrl})`;
+        const docentesChannelId =
+          await this.discordService.getChannelByName('docentes');
+        if (!docentesChannelId) {
+          this.logger.error('Docentes channel not found');
+        }
         await this.discordService.sendDiscordMessage(
           docentesChannelId,
           message,
@@ -51,13 +54,11 @@ export class IssuesService {
 
       this.logger.log('Message sent to Discord channel successfully');
     } catch (error) {
-      this.logger.error(
-        `Failed to handle issue opened event: ${error.message}`,
-      );
+      this.logger.error(`Failed to handle issue opened event: ${error}`);
     }
   }
 
-  async handleIssueClosed(payload): Promise<void> {
+  async handleIssueClosed(payload: GitHubIssuePayload): Promise<void> {
     const { issue } = payload;
     const issueTitle = issue.title;
     const issueBody = issue.body;
@@ -68,30 +69,30 @@ export class IssuesService {
       const { paradigm, assignment, teamName } = this.splitRepositoryName(
         payload.repository.name,
       );
-      console.log('paradigm:', paradigm);
-      console.log('assignment:', assignment);
-      console.log('teamName:', teamName);
 
-      const channelId = await this.discordService.getChannelByName(teamName);
-
-      const docentesChannelId =
-        await this.discordService.getChannelByName('docentes');
-
-      this.googleSheetsService.updateTpStatus(
+      await this.googleSheetsService.updateTpStatus(
         'Alumnes',
         paradigm,
         teamName,
         assignment,
         'Aprobado',
       );
-      if (!channelId) {
-        throw new Error('Discord channel not found');
-      }
+
+      const message = `📢 Se cerro un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver Issue](${issueUrl})`;
+
       if (this.discordService.getGithubUsers().includes(issueCreator)) {
-        const message = `📢 Se cerro un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver Issue](${issueUrl})`;
+        const channelId = await this.discordService.getChannelByName(teamName);
+        if (!channelId) {
+          this.logger.error('Group channel not found');
+        }
         await this.discordService.sendDiscordMessage(channelId, message);
       } else {
-        const message = `📢 Se cerro un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver Issue](${issueUrl})`;
+        const docentesChannelId =
+          await this.discordService.getChannelByName('docentes');
+
+        if (!docentesChannelId) {
+          this.logger.error('Docentes channel not found');
+        }
         await this.discordService.sendDiscordMessage(
           docentesChannelId,
           message,
@@ -100,38 +101,31 @@ export class IssuesService {
 
       this.logger.log('Message sent to Discord channel successfully');
     } catch (error) {
-      this.logger.error(
-        `Failed to handle issue closed event: ${error.message}`,
-      );
+      this.logger.error(`Failed to handle issue closed event: ${error}`);
     }
   }
 
-  async handleIssueComment(payload: any): Promise<void> {
+  async handleIssueComment(payload: GitHubIssuePayload): Promise<void> {
     const issueTitle = payload.issue.title;
     const issueBody = payload.comment.body;
     const issueUrl = payload.issue.html_url;
     const issueCreator = payload.issue.user.login;
 
     try {
-      const { paradigm, assignment, teamName } = this.splitRepositoryName(
-        payload.repository.name,
-      );
-      console.log('paradigm:', paradigm);
-      console.log('assignment:', assignment);
-      console.log('teamName:', teamName);
-
-      const channelId = await this.discordService.getChannelByName(teamName);
-      const docentesChannelId =
-        await this.discordService.getChannelByName('docentes');
-      if (!channelId) {
-        throw new Error('Discord channel not found');
-      }
-
+      const { teamName } = this.splitRepositoryName(payload.repository.name);
+      const message = `📢 Se dejo un comentario en un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver issue](${issueUrl})`;
       if (this.discordService.getGithubUsers().includes(issueCreator)) {
-        const message = `📢 Se dejo un comentario en un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver issue](${issueUrl})`;
+        const channelId = await this.discordService.getChannelByName(teamName);
+        if (!channelId) {
+          this.logger.error('Group channel not found');
+        }
         await this.discordService.sendDiscordMessage(channelId, message);
       } else {
-        const message = `📢 Se dejo un comentario en un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver issue](${issueUrl})`;
+        const docentesChannelId =
+          await this.discordService.getChannelByName('docentes');
+        if (!docentesChannelId) {
+          this.logger.error('Docentes channel not found');
+        }
         await this.discordService.sendDiscordMessage(
           docentesChannelId,
           message,
@@ -140,9 +134,7 @@ export class IssuesService {
 
       this.logger.log('Message sent to Discord channel successfully');
     } catch (error) {
-      this.logger.error(
-        `Failed to handle issue comment event: ${error.message}`,
-      );
+      this.logger.error(`Failed to handle issue comment event: ${error}`);
     }
   }
 

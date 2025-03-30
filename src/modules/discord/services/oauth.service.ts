@@ -1,6 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { HttpService } from '../../../common/services/http.service';
+import { HttpService } from '@app/common/services/http.service';
 import * as querystring from 'querystring';
+
+export interface DiscordConnection {
+  id: string;
+  name: string;
+  type: string;
+  friend_sync: boolean;
+  metadata_visibility: number;
+  show_activity: boolean;
+  two_way_link: boolean;
+  verified: boolean;
+  visibility: number;
+}
+
+interface DiscordOAuthTokenResponse {
+  token_type: string;
+  access_token: string;
+  expires_in: number;
+  refresh_token: string;
+  scope: string;
+}
 
 @Injectable()
 export class OauthService {
@@ -22,7 +42,7 @@ export class OauthService {
     return `https://discord.com/api/oauth2/authorize?${querystring.stringify(params)}`;
   }
 
-  async exchangeCodeForToken(code: string): Promise<any> {
+  async exchangeCodeForToken(code: string): Promise<DiscordOAuthTokenResponse> {
     try {
       const response = await fetch('https://discord.com/api/oauth2/token', {
         method: 'POST',
@@ -46,14 +66,16 @@ export class OauthService {
         throw new Error(`Failed to exchange code for token: ${errorText}`);
       }
 
-      return await response.json();
+      return (await response.json()) as DiscordOAuthTokenResponse;
     } catch (error) {
-      this.logger.error(`Error exchanging code for token: ${error.message}`);
+      this.logger.error(`Error exchanging code for token: ${error}`);
       throw error;
     }
   }
 
-  async fetchUserConnections(accessToken: string): Promise<any[]> {
+  async fetchUserConnections(
+    accessToken: string,
+  ): Promise<DiscordConnection[]> {
     try {
       const response = await fetch(
         'https://discord.com/api/users/@me/connections',
@@ -63,14 +85,13 @@ export class OauthService {
           },
         },
       );
-
       if (!response.ok) {
         throw new Error('Failed to fetch user connections');
       }
 
-      return await response.json();
+      return (await response.json()) as DiscordConnection[];
     } catch (error) {
-      this.logger.error(`Error fetching user connections: ${error.message}`);
+      this.logger.error(`Error fetching user connections: ${error}`);
       throw error;
     }
   }
