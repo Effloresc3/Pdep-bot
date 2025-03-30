@@ -83,18 +83,16 @@ export class DiscordService {
     message: string,
   ): Promise<Message> {
     try {
-      const body = JSON.stringify({ message });
+      const body = JSON.stringify({ content: message });
       const endpoint = `channels/${channelId}/messages`;
       const options = {
         method: 'POST',
         body: body,
       };
-
       const response = await this.httpService.discordRequest({
         endpoint,
         options,
       });
-
       this.logger.log('Message sent successfully');
       return (await response.json()) as Message;
     } catch (error) {
@@ -317,7 +315,14 @@ export class DiscordService {
         endpoint: endpoint,
         options: options,
       });
-      return (await response.json()) as ReactionEmoji;
+
+      if (response.status === 204) {
+        return { success: true };
+      }
+      if (response.headers.get('content-length') !== '0') {
+        return (await response.json()) as ReactionEmoji;
+      }
+      return { success: true };
     } catch (error) {
       this.logger.error(`Failed to react to message: ${error}`);
       throw error;

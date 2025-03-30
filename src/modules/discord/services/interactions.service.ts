@@ -127,7 +127,6 @@ export class InteractionsService {
           },
         };
       }
-
       // Parse user mentions
       const userIds =
         usersString
@@ -146,7 +145,6 @@ export class InteractionsService {
       }
 
       const currentUserId = interaction.member.user.id;
-
       if (userIds.includes(currentUserId)) {
         return {
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -163,7 +161,7 @@ export class InteractionsService {
         interaction.channel_id,
         groupName,
         userIds,
-        interaction.member.user.id,
+        currentUserId,
       );
 
       return {
