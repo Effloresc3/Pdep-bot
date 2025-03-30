@@ -9,19 +9,21 @@ export class GoogleSheetsService {
 
   private readonly clientId: string;
   private readonly clientSecret: string;
-  private readonly refreshToken: string;
-  private readonly redirectUri: string;
   private readonly spreadSheetId: string;
+  private readonly serviceAccountEmail?: string;
+  private readonly privateKey?: string;
 
   constructor(private configService: ConfigService) {
     this.clientId = this.configService.get<string>('SHEETS_CLIENT_ID');
     this.clientSecret = this.configService.get<string>('SHEETS_CLIENT_SECRET');
-    this.refreshToken = this.configService.get<string>('GOOGLE_REFRESH_TOKEN');
-    this.redirectUri = this.configService.get<string>(
-      'GOOGLE_REDIRECT_URI',
-      'http://localhost',
-    );
     this.spreadSheetId = this.configService.get<string>('SHEET_ID');
+    this.serviceAccountEmail = this.configService.get<string>(
+      'SERVICE_ACCOUNT_EMAIL',
+    );
+    this.privateKey = this.configService
+      .get<string>('SERVICE_ACCOUNT_PRIVATE_KEY')
+      ?.replace(/\\n/g, '\n');
+
     if (!this.clientId || !this.clientSecret) {
       this.logger.warn(
         'Google API credentials not found in environment variables',
@@ -29,33 +31,31 @@ export class GoogleSheetsService {
     }
   }
 
-  authorize(): OAuth2Client {
+  async authorize(): Promise<OAuth2Client> {
     try {
-      const oauth2Client = new OAuth2Client({
-        clientId: this.clientId,
-        clientSecret: this.clientSecret,
-        redirectUri: this.redirectUri,
-      });
-
-      if (this.refreshToken) {
-        oauth2Client.setCredentials({ refresh_token: this.refreshToken });
-        this.logger.debug('Using refresh token from environment variables');
-        return oauth2Client;
+      if (!this.serviceAccountEmail || !this.privateKey) {
+        throw new Error('Service account credentials are not configured');
       }
-      this.logger.error(
-        'No refresh token available. Authentication cannot proceed.',
+      const jwtClient = new google.auth.JWT(
+        this.serviceAccountEmail,
+        null,
+        this.privateKey,
+        ['https://www.googleapis.com/auth/spreadsheets'],
+        null,
       );
-      throw new Error(
-        'Missing Google API refresh token. Please set GOOGLE_REFRESH_TOKEN environment variable.',
-      );
+
+      await jwtClient.authorize();
+      this.logger.debug('Successfully authenticated using service account');
+
+      return jwtClient;
     } catch (error) {
       this.logger.error(`Authorization failed: ${error}`);
       throw error;
     }
   }
 
-  private getSheetsClient(): sheets_v4.Sheets {
-    const auth = this.authorize();
+  private async getSheetsClient(): Promise<sheets_v4.Sheets> {
+    const auth = await this.authorize();
     return google.sheets({ version: 'v4', auth } as sheets_v4.Options);
   }
 
@@ -67,7 +67,7 @@ export class GoogleSheetsService {
   ): Promise<number[]> {
     try {
       const column = `Grupo de ${paradigm}`;
-      const sheets = this.getSheetsClient();
+      const sheets = await this.getSheetsClient();
 
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -120,7 +120,7 @@ export class GoogleSheetsService {
     sheetName: string,
   ): Promise<number> {
     try {
-      const sheets = this.getSheetsClient();
+      const sheets = await this.getSheetsClient();
 
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -162,7 +162,7 @@ export class GoogleSheetsService {
     newStatus: string,
   ): Promise<void> {
     try {
-      const sheets = this.getSheetsClient();
+      const sheets = await this.getSheetsClient();
 
       // First, get the rows for the group
       const rows = await this.getGroupRows(
