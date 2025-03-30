@@ -5,13 +5,11 @@ import {
 } from 'discord-interactions';
 import { DiscordService } from './discord.service';
 import { OauthService } from '@app/modules/discord/services/oauth.service';
-import { ApplicationCommand } from 'discord.js';
 import { DiscordInteraction } from '@app/modules/discord/models/discord-interaction';
 
 enum Commands {
   test = 'test',
   create_group = 'create_group',
-  connect = 'connect',
 }
 
 interface InteractionResponse {
@@ -49,12 +47,6 @@ export class InteractionsService {
         },
       ],
     },
-
-    {
-      name: 'connect',
-      default_member_permissions: '8',
-      description: 'Connect your Github account',
-    },
   ];
 
   constructor(
@@ -72,7 +64,6 @@ export class InteractionsService {
       [Commands.test]: async () => Promise.resolve(this.handleTestCommand()),
       [Commands.create_group]: async (interaction) =>
         this.handleCreateGroupCommand(interaction),
-      [Commands.connect]: async () => Promise.resolve(this.connect()),
       default: async (interaction) =>
         Promise.resolve({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -93,16 +84,6 @@ export class InteractionsService {
     return {
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: { content: 'Hello! The test command works!' },
-    };
-  }
-
-  private connect(): InteractionResponse {
-    const authorizationUrl = this.oauthService.generateAuthorizationUrl();
-    return {
-      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-      data: {
-        content: `Connect your github account [here](${authorizationUrl})`,
-      },
     };
   }
 
