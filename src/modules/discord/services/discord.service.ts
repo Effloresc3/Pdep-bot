@@ -219,7 +219,7 @@ export class DiscordService {
     // Check every 40 seconds until done
     const interval = setInterval(
       checkReactions,
-      Duration.fromObject({ minutes: 40 }).toMillis(),
+      Duration.fromObject({ seconds: 40 }).toMillis(),
     );
   }
 
