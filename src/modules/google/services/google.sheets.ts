@@ -113,9 +113,8 @@ export class GoogleSheetsService {
     }
   }
 
-  private async getTpColumn(
-    paradigm: string,
-    tp: string,
+  private async getByColumnName(
+    columnName: string,
     spreadsheetId: string,
     sheetName: string,
   ): Promise<number> {
@@ -126,7 +125,6 @@ export class GoogleSheetsService {
         spreadsheetId,
         range: `${sheetName}!A1:BA`,
       });
-      const columnNanme = `${paradigm}${tp}`;
       const values = response.data.values;
       if (!values) {
         this.logger.error('No data found in the sheet');
@@ -139,11 +137,11 @@ export class GoogleSheetsService {
         (header) =>
           typeof header === 'string' &&
           header?.toLowerCase().replace(/\r?\n/g, '').trim() ===
-            columnNanme.toLowerCase().trim(),
+            columnName.toLowerCase().trim(),
       );
 
       if (columnIndex === -1) {
-        this.logger.error(`Column with TP "${columnNanme}" not found`);
+        this.logger.error(`Column with TP "${columnName}" not found`);
       }
 
       // Return 1-based column index (as Google Sheets uses 1-based indices)
@@ -171,11 +169,10 @@ export class GoogleSheetsService {
         this.spreadSheetId,
         sheetName,
       );
-
+      const columnName = `${paradigm}${tp}`;
       // Then get the column for the TP
-      const column = await this.getTpColumn(
-        paradigm,
-        tp,
+      const column = await this.getByColumnName(
+        columnName,
         this.spreadSheetId,
         sheetName,
       );
@@ -243,5 +240,88 @@ export class GoogleSheetsService {
     }
 
     return result;
+  }
+
+  async registerUser(
+    legajo: string,
+    name: string,
+    email: string,
+    github: string,
+    spreadSheetId: string,
+    sheetName: string,
+  ) {
+    try {
+      const sheets = await this.getSheetsClient();
+
+      // Get the column indices for each field
+      const legajoColumn = await this.getByColumnName(
+        'Legajo',
+        spreadSheetId,
+        sheetName,
+      );
+      const nameColumn = await this.getByColumnName(
+        'Nombre',
+        spreadSheetId,
+        sheetName,
+      );
+      const emailColumn = await this.getByColumnName(
+        'Email',
+        spreadSheetId,
+        sheetName,
+      );
+      const githubColumn = await this.getByColumnName(
+        'GitHub',
+        spreadSheetId,
+        sheetName,
+      );
+
+      // Get all the data to find the first empty row
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: spreadSheetId,
+        range: `${sheetName}!A1:BA`,
+      });
+
+      const values = response.data.values || [];
+      if (!values.length) {
+        throw new Error('No data found in the sheet');
+      }
+
+      // First empty row is the length of the values array + 1
+      const firstEmptyRow = values.length + 1;
+
+      // Prepare data updates for each column
+      const data = [
+        {
+          range: `${sheetName}!${this.columnToLetter(legajoColumn)}${firstEmptyRow}`,
+          values: [[legajo]],
+        },
+        {
+          range: `${sheetName}!${this.columnToLetter(nameColumn)}${firstEmptyRow}`,
+          values: [[name]],
+        },
+        {
+          range: `${sheetName}!${this.columnToLetter(emailColumn)}${firstEmptyRow}`,
+          values: [[email]],
+        },
+        {
+          range: `${sheetName}!${this.columnToLetter(githubColumn)}${firstEmptyRow}`,
+          values: [[github]],
+        },
+      ];
+
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: spreadSheetId,
+        requestBody: {
+          valueInputOption: 'USER_ENTERED',
+          data,
+        },
+      });
+
+      this.logger.debug(`User registered in row ${firstEmptyRow}`);
+      return firstEmptyRow;
+    } catch (error) {
+      this.logger.error(`Failed to register user: ${error}`);
+      throw error;
+    }
   }
 }

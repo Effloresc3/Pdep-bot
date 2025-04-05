@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DiscordService } from '../../discord/services/discord.service';
 import { GoogleSheetsService } from '@app/modules/google/services/google.sheets';
 import { GitHubIssuePayload } from '@app/modules/github/models/github-interfaces';
+import { DiscordInfoService } from '@app/modules/discord/services/discordInfo.service';
 
 @Injectable()
 export class IssuesService {
@@ -9,6 +10,7 @@ export class IssuesService {
 
   constructor(
     private readonly discordService: DiscordService,
+    private readonly discordInfoService: DiscordInfoService,
     private readonly googleSheetsService: GoogleSheetsService,
   ) {}
 
@@ -18,23 +20,31 @@ export class IssuesService {
     const issueBody = issue.body;
     const issueUrl = issue.html_url;
     const issueCreator = issue.user.login;
+    const organization = payload.repository.owner.login;
 
     this.logger.log(`An issue was opened with title: ${issueTitle}`);
     const { paradigm, assignment, teamName } = this.splitRepositoryName(
       payload.repository.name,
     );
     try {
-      await this.googleSheetsService.updateTpStatus(
-        'Alumnes',
-        paradigm,
-        teamName,
-        assignment,
-        'Correcciones pendientes',
-      );
-
+      const discordInfo =
+        await this.discordInfoService.findOneByOrganizationName(organization);
+      if (discordInfo.spreadSheetId !== null) {
+        await this.googleSheetsService.updateTpStatus(
+          discordInfo.spreadSheetName,
+          paradigm,
+          teamName,
+          assignment,
+          SpreadSheetStatus.approved,
+        );
+      }
       const message = `📢 Se creo un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver issue](${issueUrl})`;
 
-      const channelId = await this.discordService.getChannelByName(teamName);
+      const guildId = discordInfo.guildId;
+      const channelId = await this.discordService.getChannelByName(
+        teamName,
+        guildId,
+      );
       if (!channelId) {
         this.logger.error('Group channel not found');
       }
@@ -52,23 +62,33 @@ export class IssuesService {
     const issueBody = issue.body;
     const issueUrl = issue.html_url;
     const issueCreator = issue.user.login;
+    const organization = payload.repository.owner.login;
 
     try {
       const { paradigm, assignment, teamName } = this.splitRepositoryName(
         payload.repository.name,
       );
 
-      await this.googleSheetsService.updateTpStatus(
-        'Alumnes',
-        paradigm,
-        teamName,
-        assignment,
-        'Aprobado',
-      );
+      const discordInfo =
+        await this.discordInfoService.findOneByOrganizationName(organization);
+      if (discordInfo.spreadSheetId !== null) {
+        await this.googleSheetsService.updateTpStatus(
+          discordInfo.spreadSheetName,
+          paradigm,
+          teamName,
+          assignment,
+          SpreadSheetStatus.approved,
+        );
+      }
 
       const message = `📢 Se cerro un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver Issue](${issueUrl})`;
 
-      const channelId = await this.discordService.getChannelByName(teamName);
+      const guildId = discordInfo.guildId;
+      const channelId = await this.discordService.getChannelByName(
+        teamName,
+        guildId,
+      );
+
       if (!channelId) {
         this.logger.error('Group channel not found');
       }
@@ -85,11 +105,18 @@ export class IssuesService {
     const issueBody = payload.comment.body;
     const issueUrl = payload.issue.html_url;
     const issueCreator = payload.issue.user.login;
+    const organization = payload.repository.owner.login;
 
     try {
       const { teamName } = this.splitRepositoryName(payload.repository.name);
       const message = `📢 Se dejo un comentario en un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver issue](${issueUrl})`;
-      const channelId = await this.discordService.getChannelByName(teamName);
+      const discordInfo =
+        await this.discordInfoService.findOneByOrganizationName(organization);
+      const guildId = discordInfo.guildId;
+      const channelId = await this.discordService.getChannelByName(
+        teamName,
+        guildId,
+      );
       if (!channelId) {
         this.logger.error('Group channel not found');
       }

@@ -30,7 +30,6 @@ export class GithubController {
       [Events.issue_comment]: async () =>
         await this.issuesService.handleIssueComment(payload),
     };
-
     await eventsDictionary[githubEvent]?.();
 
     return { message: 'Accepted' };

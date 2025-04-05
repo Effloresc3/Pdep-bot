@@ -1,15 +1,34 @@
 import { Module } from '@nestjs/common';
-import { OauthController } from './controllers/oauth.controller';
 import { DiscordService } from './services/discord.service';
-import { OauthService } from './services/oauth.service';
 import { InteractionsController } from './controllers/interactions.controller';
 import { InteractionsService } from './services/interactions.service';
 import { HttpModule } from '@app/common/http.module';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { DiscordInfo } from '@app/modules/discord/entities/discordInfo.entity';
+import { DiscordInfoService } from '@app/modules/discord/services/discordInfo.service';
+import { DiscordConnectionService } from '@app/modules/discord/services/discordConnection.service';
+import { MessageService } from '@app/modules/discord/services/message.service';
+import { DiscordConnection } from '@app/modules/discord/entities/discordConnections.entity';
+import { Message } from '@app/modules/discord/entities/message.entity';
+import { UserService } from '@app/modules/discord/services/user.service';
+import { User } from '@app/modules/discord/entities/user.entity';
+import { GoogleModule } from '@app/modules/google/google.module';
 
 @Module({
-  imports: [HttpModule],
-  controllers: [OauthController, InteractionsController],
-  providers: [DiscordService, InteractionsService, OauthService],
-  exports: [DiscordService],
+  imports: [
+    HttpModule,
+    TypeOrmModule.forFeature([DiscordInfo, DiscordConnection, Message, User]),
+    GoogleModule,
+  ],
+  controllers: [InteractionsController],
+  providers: [
+    DiscordService,
+    InteractionsService,
+    DiscordInfoService,
+    DiscordConnectionService,
+    MessageService,
+    UserService,
+  ],
+  exports: [DiscordService, DiscordInfoService],
 })
 export class DiscordModule {}
