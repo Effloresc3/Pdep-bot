@@ -64,7 +64,6 @@ export class DiscordService implements OnModuleInit, OnModuleDestroy {
           method: 'GET',
         },
       });
-
       const channels: GuildChannel[] =
         (await response.json()) as GuildChannel[];
 
@@ -386,6 +385,40 @@ export class DiscordService implements OnModuleInit, OnModuleDestroy {
   async reloadCommands(commands: unknown) {
     try {
       const endpoint = `applications/${process.env.DISCORD_CLIENT_ID}/commands`;
+
+      const body = JSON.stringify(commands);
+      const options = {
+        method: 'PUT',
+        body,
+      };
+      const response = await this.httpService.discordRequest({
+        endpoint: endpoint,
+        options: options,
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json()) as Error;
+        this.logger.log(
+          `Failed to reload commands: ${JSON.stringify(errorData)}`,
+        );
+      }
+
+      const result = (await response.json()) as ApplicationCommand;
+      this.logger.log('Successfully reloaded application commands');
+      return {
+        success: true,
+        message: 'Commands reloaded successfully',
+        result,
+      };
+    } catch (error) {
+      this.logger.error('Error reloading commands:', error);
+      throw error;
+    }
+  }
+
+  async reloadGuildCommands(guildId: string, commands: unknown) {
+    try {
+      const endpoint = `applications/${process.env.DISCORD_CLIENT_ID}/guilds/${guildId}/commands`;
 
       const body = JSON.stringify(commands);
       const options = {

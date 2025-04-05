@@ -29,9 +29,9 @@ export class IssuesService {
     try {
       const discordInfo =
         await this.discordInfoService.findOneByOrganizationName(organization);
-      if (discordInfo.spreadSheetId !== null) {
+      if (discordInfo.spreadsheetId !== null) {
         await this.googleSheetsService.updateTpStatus(
-          discordInfo.spreadSheetName,
+          discordInfo.spreadsheetName,
           paradigm,
           teamName,
           assignment,
@@ -71,9 +71,9 @@ export class IssuesService {
 
       const discordInfo =
         await this.discordInfoService.findOneByOrganizationName(organization);
-      if (discordInfo.spreadSheetId !== null) {
+      if (discordInfo.spreadsheetId !== null) {
         await this.googleSheetsService.updateTpStatus(
-          discordInfo.spreadSheetName,
+          discordInfo.spreadsheetName,
           paradigm,
           teamName,
           assignment,
@@ -84,6 +84,8 @@ export class IssuesService {
       const message = `📢 Se cerro un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver Issue](${issueUrl})`;
 
       const guildId = discordInfo.guildId;
+
+
       const channelId = await this.discordService.getChannelByName(
         teamName,
         guildId,

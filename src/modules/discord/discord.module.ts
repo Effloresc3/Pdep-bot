@@ -13,6 +13,7 @@ import { Message } from '@app/modules/discord/entities/message.entity';
 import { UserService } from '@app/modules/discord/services/user.service';
 import { User } from '@app/modules/discord/entities/user.entity';
 import { GoogleModule } from '@app/modules/google/google.module';
+import { DiscordInfoController } from '@app/modules/discord/controllers/discordInfo.controller';
 
 @Module({
   imports: [
@@ -20,7 +21,7 @@ import { GoogleModule } from '@app/modules/google/google.module';
     TypeOrmModule.forFeature([DiscordInfo, DiscordConnection, Message, User]),
     GoogleModule,
   ],
-  controllers: [InteractionsController],
+  controllers: [InteractionsController, DiscordInfoController],
   providers: [
     DiscordService,
     InteractionsService,

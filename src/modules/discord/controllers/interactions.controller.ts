@@ -63,4 +63,14 @@ export class InteractionsController {
       throw error;
     }
   }
+
+  @Post('reload-guild-commands')
+  async reloadGuildCommands(@Body() body: { guildId: string }) {
+    try {
+      return await this.interactionsService.reloadGuildCommands(body.guildId);
+    } catch (error) {
+      this.logger.error('Failed to reload commands:', error);
+      throw error;
+    }
+  }
 }

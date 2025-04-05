@@ -7,17 +7,17 @@ export class DiscordInfo {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
+  @Column({ unique: true })
   organizationName: string;
 
-  @Column()
+  @Column({ unique: true })
   guildId: string;
 
-  @Column()
-  spreadSheetId: string;
+  @Column({ unique: true })
+  spreadsheetId: string;
 
-  @Column()
-  spreadSheetName: string;
+  @Column({ unique: true })
+  spreadsheetName: string;
 
   @OneToMany(
     () => DiscordConnection,

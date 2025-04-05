@@ -9,14 +9,14 @@ export class GoogleSheetsService {
 
   private readonly clientId: string;
   private readonly clientSecret: string;
-  private readonly spreadSheetId: string;
+  private readonly spreadsheetId: string;
   private readonly serviceAccountEmail?: string;
   private readonly privateKey?: string;
 
   constructor(private configService: ConfigService) {
     this.clientId = this.configService.get<string>('SHEETS_CLIENT_ID');
     this.clientSecret = this.configService.get<string>('SHEETS_CLIENT_SECRET');
-    this.spreadSheetId = this.configService.get<string>('SHEET_ID');
+    this.spreadsheetId = this.configService.get<string>('SHEET_ID');
     this.serviceAccountEmail = this.configService.get<string>(
       'SERVICE_ACCOUNT_EMAIL',
     );
@@ -141,7 +141,7 @@ export class GoogleSheetsService {
       );
 
       if (columnIndex === -1) {
-        this.logger.error(`Column with TP "${columnName}" not found`);
+        this.logger.error(`Column with name "${columnName}" not found`);
       }
 
       // Return 1-based column index (as Google Sheets uses 1-based indices)
@@ -166,20 +166,20 @@ export class GoogleSheetsService {
       const rows = await this.getGroupRows(
         paradigm,
         groupName,
-        this.spreadSheetId,
+        this.spreadsheetId,
         sheetName,
       );
       const columnName = `${paradigm}${tp}`;
       // Then get the column for the TP
       const column = await this.getByColumnName(
         columnName,
-        this.spreadSheetId,
+        this.spreadsheetId,
         sheetName,
       );
 
       // Get the valid values from the validation rule
       const validationResponse = await sheets.spreadsheets.get({
-        spreadsheetId: this.spreadSheetId,
+        spreadsheetId: this.spreadsheetId,
         includeGridData: true,
         ranges: [`${sheetName}!${this.columnToLetter(column)}2`],
       });
@@ -204,7 +204,7 @@ export class GoogleSheetsService {
 
       // Update all cells
       await sheets.spreadsheets.values.batchUpdate({
-        spreadsheetId: this.spreadSheetId,
+        spreadsheetId: this.spreadsheetId,
         requestBody: {
           valueInputOption: 'USER_ENTERED',
           data: rows.map((row) => ({
@@ -247,37 +247,28 @@ export class GoogleSheetsService {
     name: string,
     email: string,
     github: string,
-    spreadSheetId: string,
+    spreadsheetId: string,
     sheetName: string,
   ) {
     try {
       const sheets = await this.getSheetsClient();
 
       // Get the column indices for each field
-      const legajoColumn = await this.getByColumnName(
-        'Legajo',
-        spreadSheetId,
-        sheetName,
-      );
-      const nameColumn = await this.getByColumnName(
-        'Nombre',
-        spreadSheetId,
-        sheetName,
-      );
-      const emailColumn = await this.getByColumnName(
-        'Email',
-        spreadSheetId,
-        sheetName,
-      );
-      const githubColumn = await this.getByColumnName(
-        'GitHub',
-        spreadSheetId,
+      const columnIndices = await this.getColumnIndices(
+        ['Legajo', 'Nombre', 'Email', 'Usuario de GitHub', 'Curso'],
+        spreadsheetId,
         sheetName,
       );
 
-      // Get all the data to find the first empty row
+      const legajoColumn = columnIndices['Legajo'];
+      const nameColumn = columnIndices['Nombre'];
+      const emailColumn = columnIndices['Email'];
+      const githubColumn = columnIndices['Usuario de GitHub'];
+      const cursoColumn = columnIndices['Curso']; // Add this to find the curso column
+
+      // Get all the data
       const response = await sheets.spreadsheets.values.get({
-        spreadsheetId: spreadSheetId,
+        spreadsheetId: spreadsheetId,
         range: `${sheetName}!A1:BA`,
       });
 
@@ -286,41 +277,177 @@ export class GoogleSheetsService {
         throw new Error('No data found in the sheet');
       }
 
-      // First empty row is the length of the values array + 1
-      const firstEmptyRow = values.length + 1;
+      // Find the row where "Curso" appears
+      let cursoRowIndex = -1;
+      for (let i = 0; i < values.length; i++) {
+        if (
+          values[i][cursoColumn - 1] === 'Curso' ||
+          values[i].some((cell) => cell && cell.toLowerCase() === 'curso')
+        ) {
+          cursoRowIndex = i;
+          break;
+        }
+      }
+
+      if (cursoRowIndex === -1) {
+        throw new Error('Could not find a row with "Curso" in it');
+      }
+
+      // The row to insert will be directly after the curso row
+      const nextRowIndex = cursoRowIndex + 1; // 0-indexed
+      const targetRow = nextRowIndex + 1; // 1-indexed for sheets API
+
+      // Get the "Curso" value from the next row
+      let cursoValue = '';
+      if (
+        nextRowIndex < values.length &&
+        values[nextRowIndex].length > cursoColumn - 1
+      ) {
+        cursoValue = values[nextRowIndex][cursoColumn - 1] || '';
+      }
+
+      // Get spreadsheet metadata to check the current grid size
+      const metadata = await sheets.spreadsheets.get({
+        spreadsheetId,
+        includeGridData: false,
+      });
+
+      const sheet = metadata.data.sheets.find(
+        (s) => s.properties.title === sheetName,
+      );
+      if (!sheet) {
+        throw new Error(`Sheet '${sheetName}' not found`);
+      }
+
+      // Insert a new row above the next row (which is the same as inserting after the curso row)
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              insertDimension: {
+                range: {
+                  sheetId: sheet.properties.sheetId,
+                  dimension: 'ROWS',
+                  startIndex: nextRowIndex, // 0-indexed in the API
+                  endIndex: nextRowIndex + 1, // exclusive end index
+                },
+                inheritFromBefore: false, // Do NOT inherit formatting from row above (curso row)
+              },
+            },
+          ],
+        },
+      });
+
+      // Copy formatting from the next row (which is now nextRowIndex + 1 after insertion)
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              copyPaste: {
+                source: {
+                  sheetId: sheet.properties.sheetId,
+                  startRowIndex: nextRowIndex + 1, // The row after our newly inserted row
+                  endRowIndex: nextRowIndex + 2,
+                  startColumnIndex: 0,
+                  endColumnIndex: 100, // Assuming your sheet doesn't have more than 100 columns
+                },
+                destination: {
+                  sheetId: sheet.properties.sheetId,
+                  startRowIndex: nextRowIndex,
+                  endRowIndex: nextRowIndex + 1,
+                  startColumnIndex: 0,
+                  endColumnIndex: 100,
+                },
+                pasteType: 'PASTE_FORMAT',
+                pasteOrientation: 'NORMAL',
+              },
+            },
+          ],
+        },
+      });
 
       // Prepare data updates for each column
       const data = [
         {
-          range: `${sheetName}!${this.columnToLetter(legajoColumn)}${firstEmptyRow}`,
+          range: `${sheetName}!${this.columnToLetter(legajoColumn)}${targetRow}`,
           values: [[legajo]],
         },
         {
-          range: `${sheetName}!${this.columnToLetter(nameColumn)}${firstEmptyRow}`,
+          range: `${sheetName}!${this.columnToLetter(nameColumn)}${targetRow}`,
           values: [[name]],
         },
         {
-          range: `${sheetName}!${this.columnToLetter(emailColumn)}${firstEmptyRow}`,
+          range: `${sheetName}!${this.columnToLetter(emailColumn)}${targetRow}`,
           values: [[email]],
         },
         {
-          range: `${sheetName}!${this.columnToLetter(githubColumn)}${firstEmptyRow}`,
+          range: `${sheetName}!${this.columnToLetter(githubColumn)}${targetRow}`,
           values: [[github]],
+        },
+        {
+          range: `${sheetName}!${this.columnToLetter(cursoColumn)}${targetRow}`,
+          values: [[cursoValue]],
         },
       ];
 
       await sheets.spreadsheets.values.batchUpdate({
-        spreadsheetId: spreadSheetId,
+        spreadsheetId: spreadsheetId,
         requestBody: {
           valueInputOption: 'USER_ENTERED',
           data,
         },
       });
 
-      this.logger.debug(`User registered in row ${firstEmptyRow}`);
-      return firstEmptyRow;
+      this.logger.debug(`User registered in row ${targetRow}`);
+      return targetRow;
     } catch (error) {
       this.logger.error(`Failed to register user: ${error}`);
+      throw error;
+    }
+  }
+
+  private async getColumnIndices(
+    columnNames: string[],
+    spreadsheetId: string,
+    sheetName: string,
+  ): Promise<Record<string, number>> {
+    try {
+      const sheets = await this.getSheetsClient();
+
+      // Get only the header row
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${sheetName}!1:1`,
+      });
+
+      const headerRow = response.data.values?.[0] || [];
+      if (!headerRow.length) {
+        throw new Error('No headers found in the sheet');
+      }
+
+      // Create a map of column names to indices
+      const result: Record<string, number> = {};
+
+      for (const columnName of columnNames) {
+        const index = headerRow.findIndex(
+          (header) =>
+            typeof header === 'string' &&
+            header.toLowerCase() === columnName.toLowerCase(),
+        );
+
+        if (index === -1) {
+          throw new Error(`Column "${columnName}" not found in sheet headers`);
+        }
+
+        // Add 1 to convert from 0-based to 1-based index
+        result[columnName] = index + 1;
+      }
+
+      return result;
+    } catch (error) {
+      this.logger.error(`Failed to get column indices: ${error}`);
       throw error;
     }
   }

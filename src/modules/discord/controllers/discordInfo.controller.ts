@@ -4,12 +4,12 @@ import { DiscordInfo } from '@app/modules/discord/entities/discordInfo.entity';
 import { DiscordInfoService } from '@app/modules/discord/services/discordInfo.service';
 
 @Controller('information')
-export class InteractionsController {
+export class DiscordInfoController {
   constructor(private discordInfoService: DiscordInfoService) {}
 
   @Post('')
   @HttpCode(200)
-  async handleInteraction(@Body() body: DiscordInfo) {
+  async createInformation(@Body() body: DiscordInfo) {
     return await this.discordInfoService.create(body);
   }
 }

@@ -11,8 +11,8 @@ import { DiscordInfoService } from '@app/modules/discord/services/discordInfo.se
 
 enum Commands {
   test = 'test',
-  create_group = 'crear_grupo',
-  register = 'registrar',
+  crear_grupo = 'crear_grupo',
+  registrar = 'registrar',
 }
 
 interface InteractionResponse {
@@ -96,9 +96,9 @@ export class InteractionsService {
       (interaction: DiscordInteraction) => Promise<unknown>
     > = {
       [Commands.test]: async () => Promise.resolve(this.handleTestCommand()),
-      [Commands.register]: async () =>
+      [Commands.registrar]: async () =>
         Promise.resolve(this.handleRegistration(interaction)),
-      [Commands.create_group]: async (interaction) =>
+      [Commands.crear_grupo]: async (interaction) =>
         this.handleCreateGroupCommand(interaction),
       default: async (interaction) =>
         Promise.resolve({
@@ -221,13 +221,13 @@ export class InteractionsService {
       const discordInfo = await this.discordInfoService.findOneByGuildId(
         interaction.guild_id,
       );
-      await this.sheetsService.registerUser(
+      this.sheetsService.registerUser(
         legajo,
         name,
         email,
         github,
-        discordInfo.spreadSheetId,
-        discordInfo.spreadSheetName,
+        discordInfo.spreadsheetId,
+        discordInfo.spreadsheetName,
       );
       return {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -250,5 +250,9 @@ export class InteractionsService {
 
   async reloadCommands() {
     return this.discordService.reloadCommands(this.commands);
+  }
+
+  async reloadGuildCommands(guildId: string) {
+    return this.discordService.reloadGuildCommands(guildId, this.commands);
   }
 }
