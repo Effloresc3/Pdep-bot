@@ -25,6 +25,8 @@ export class DiscordService {
   private githubUsers: [string];
   private readonly logger = new Logger(DiscordService.name);
   private readonly guildId = process.env.GUILD_ID;
+  private readonly textChannelName = process.env.TEXT_CHANNEL_NAME || 'grupos-de-tps';
+  private readonly voiceChannelName = process.env.VOICE_CHANNEL_NAME || 'grupos-de-tps-voz';
 
   constructor(private httpService: HttpService) {}
 
@@ -105,9 +107,9 @@ export class DiscordService {
       const roleId = await this.createRole(groupName);
 
       // Get the text category ID
-      const textCategoryId = await this.getChannelByName('grupos-de-tps');
+      const textCategoryId = await this.getChannelByName(this.textChannelName);
       // Get the voice category ID
-      const voiceCategoryId = await this.getChannelByName('grupos-de-tps-voz');
+      const voiceCategoryId = await this.getChannelByName(this.voiceChannelName);
 
       if (!textCategoryId || !voiceCategoryId)
         this.logger.error('Required categories not found');
