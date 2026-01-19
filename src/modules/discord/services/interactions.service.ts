@@ -4,11 +4,11 @@ import {
   InteractionResponseType,
 } from 'discord-interactions';
 import { DiscordService } from './discord.service';
-import { OauthService } from '@app/modules/discord/services/oauth.service';
 import { DiscordInteraction } from '@app/modules/discord/models/discord-interaction';
 
 enum Commands {
   test = 'test',
+  admin_create_group = 'admin_create_group',
   create_group = 'create_group',
 }
 
@@ -30,6 +30,25 @@ export class InteractionsService {
       description: 'Test command',
     },
     {
+      name: 'admin_create_group',
+      default_member_permissions: '8',
+      description: 'Create a new group with text and voice channels',
+      options: [
+        {
+          name: 'group_name',
+          description: 'Name of the group to create',
+          type: 3, // STRING type
+          required: true,
+        },
+        {
+          name: 'users',
+          description: 'Users to add to the group (comma-separated mentions)',
+          type: 3, // STRING type
+          required: true,
+        },
+      ],
+    },
+    {
       name: 'create_group',
       description: 'Create a new group with text and voice channels',
       options: [
@@ -49,10 +68,7 @@ export class InteractionsService {
     },
   ];
 
-  constructor(
-    private readonly discordService: DiscordService,
-    private readonly oauthService: OauthService,
-  ) {}
+  constructor(private readonly discordService: DiscordService) {}
 
   async handleCommand(interaction: DiscordInteraction): Promise<unknown> {
     const name = interaction.data.name;
@@ -62,6 +78,8 @@ export class InteractionsService {
       (interaction: DiscordInteraction) => Promise<unknown>
     > = {
       [Commands.test]: async () => Promise.resolve(this.handleTestCommand()),
+      [Commands.admin_create_group]: async (interaction) =>
+        this.handleAdminCreateGroupCommand(interaction),
       [Commands.create_group]: async (interaction) =>
         this.handleCreateGroupCommand(interaction),
       default: async (interaction) =>
@@ -87,6 +105,68 @@ export class InteractionsService {
     };
   }
 
+  private async handleAdminCreateGroupCommand(
+    interaction: DiscordInteraction,
+  ): Promise<InteractionResponse> {
+    try {
+      const groupName = interaction.data.options.find(
+        (option) => option.name === 'group_name',
+      )?.value;
+
+      const usersString = interaction.data.options.find(
+        (option) => option.name === 'users',
+      )?.value;
+
+      if (!groupName || !usersString) {
+        return {
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: 'Error: El nombre del grupo y los usuarios son requeridos',
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        };
+      }
+      // Parse user mentions
+      const userIds =
+        usersString
+          .match(/<@!?(\d+)>/g)
+          ?.map((mention) => mention.replace(/<@!?(\d+)>/, '$1')) || [];
+
+      if (userIds.length === 0) {
+        return {
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content:
+              'Error: No se proporcionaron menciones de usuarios válidas',
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        };
+      }
+      await this.discordService.generateGroup(
+        groupName,
+        userIds,
+        null,
+        interaction.channel_id,
+        interaction.channel.guild_id,
+      );
+      return {
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: `La solicitud de creación del grupo ha sido enviada.`,
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Error creating group: ${error}`);
+      return {
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: `Error al crear el grupo: ${error}`,
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      };
+    }
+  }
   private async handleCreateGroupCommand(
     interaction: DiscordInteraction,
   ): Promise<InteractionResponse> {
@@ -139,6 +219,7 @@ export class InteractionsService {
 
       // Create confirmation message
       await this.discordService.sendConfirmationMessage(
+        interaction.channel.guild_id,
         interaction.channel_id,
         groupName,
         userIds,

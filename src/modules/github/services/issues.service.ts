@@ -2,15 +2,20 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DiscordService } from '../../discord/services/discord.service';
 import { GoogleSheetsService } from '@app/modules/google/services/google.sheets';
 import { GitHubIssuePayload } from '@app/modules/github/models/github-interfaces';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class IssuesService {
   private readonly logger = new Logger(IssuesService.name);
+  private readonly guildId: string;
 
   constructor(
+    private readonly configService: ConfigService,
     private readonly discordService: DiscordService,
     private readonly googleSheetsService: GoogleSheetsService,
-  ) {}
+  ) {
+    this.guildId = this.configService.get<string>('GUILD_ID');
+  }
 
   async handleIssueOpened(payload: GitHubIssuePayload): Promise<void> {
     const { issue } = payload;
@@ -34,7 +39,10 @@ export class IssuesService {
 
       const message = `📢 Se creo un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver issue](${issueUrl})`;
 
-      const channelId = await this.discordService.getChannelByName(teamName);
+      const channelId = await this.discordService.getChannelByName(
+        this.guildId,
+        teamName,
+      );
       if (!channelId) {
         this.logger.error('Group channel not found');
       }
@@ -68,7 +76,10 @@ export class IssuesService {
 
       const message = `📢 Se cerro un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver Issue](${issueUrl})`;
 
-      const channelId = await this.discordService.getChannelByName(teamName);
+      const channelId = await this.discordService.getChannelByName(
+        this.guildId,
+        teamName,
+      );
       if (!channelId) {
         this.logger.error('Group channel not found');
       }
@@ -89,7 +100,10 @@ export class IssuesService {
     try {
       const { teamName } = this.splitRepositoryName(payload.repository.name);
       const message = `📢 Se dejo un comentario en un issue!\n**Titulo**: ${issueTitle}\n**Creador**: ${issueCreator}\n**Detalles**: ${issueBody}\n[Ver issue](${issueUrl})`;
-      const channelId = await this.discordService.getChannelByName(teamName);
+      const channelId = await this.discordService.getChannelByName(
+        this.guildId,
+        teamName,
+      );
       if (!channelId) {
         this.logger.error('Group channel not found');
       }

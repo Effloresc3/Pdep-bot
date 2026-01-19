@@ -1,6 +1,6 @@
-version: "3.8"
 services:
   app:
+    user: "${UID}:${GID}"
     build:
       context: .
       dockerfile: Dockerfile
@@ -11,5 +11,4 @@ services:
       - "3000:3000"
     volumes:
       - ./:/app
-      # Don't exclude node_modules or dist - let the container manage these
     command: npm run start:dev
