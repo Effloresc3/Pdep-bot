@@ -2,7 +2,7 @@ production: true
 services:
   backend:
     image:
-      repository: ghcr.io/Effloresc3/pdep-bot-app
+      repository: ghcr.io/effloresc3/pdep-bot-app
       source:
         type: registry
         allowTags: ^latest$ 
