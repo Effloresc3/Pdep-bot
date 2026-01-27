@@ -1,24 +1,25 @@
-# Development-focused Dockerfile
-FROM node:18-alpine
+FROM node:latest AS build-stage
 
-# Set the working directory
 WORKDIR /app
 
-# Install NestJS CLI globally for running with --watch
-RUN npm install -g @nestjs/cli
+COPY package.json package-lock.json ./
 
-# No need to copy package files or run npm install here
-# This will be handled by the entrypoint script
+RUN npm ci
 
-# Expose port 3000
-EXPOSE 3000
+COPY . .
 
-# Create entrypoint script to check for package changes and install dependencies
-COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN npm run build 
 
-# Use the entrypoint script
-ENTRYPOINT ["docker-entrypoint.sh"]
+FROM node:latest AS final-stage
 
-# Default command (can be overridden in docker-compose)
-CMD ["npm", "run", "start:dev"]
+WORKDIR /app
+
+COPY --from=build-stage /app/dist ./dist
+COPY --from=build-stage /app/package.json ./
+COPY --from=build-stage /app/package-lock.json ./
+
+RUN npm ci --omit=dev
+
+EXPOSE 3000 
+
+CMD ["npm", "run", "start:prod"]

@@ -22,25 +22,20 @@ interface PermissionOverwriteData {
 
 @Injectable()
 export class DiscordService {
-  private githubUsers: [string];
   private readonly logger = new Logger(DiscordService.name);
-  private readonly guildId = process.env.GUILD_ID;
-  private readonly textChannelName = process.env.TEXT_CHANNEL_NAME || 'grupos-de-tps';
-  private readonly voiceChannelName = process.env.VOICE_CHANNEL_NAME || 'grupos-de-tps-voz';
+  private readonly textChannelName =
+    process.env.TEXT_CHANNEL_NAME || 'grupos-de-tps';
+  private readonly voiceChannelName =
+    process.env.VOICE_CHANNEL_NAME || 'grupos-de-tps-voz';
 
   constructor(private httpService: HttpService) {}
 
-  addGithubUsers(usernames: string[]) {
-    this.githubUsers.push(...usernames);
-  }
-
-  getGithubUsers() {
-    return this.githubUsers;
-  }
-
-  async getChannelByName(channelName: string): Promise<string | null> {
+  async getChannelByName(
+    guildId: string,
+    channelName: string,
+  ): Promise<string | null> {
     try {
-      const endpoint = `guilds/${this.guildId}/channels`;
+      const endpoint = `guilds/${guildId}/channels`;
       const response = await this.httpService.discordRequest({
         endpoint,
         options: {
@@ -61,9 +56,12 @@ export class DiscordService {
     }
   }
 
-  async getRoleByName(roleName: string): Promise<string | null> {
+  async getRoleByName(
+    guildId: string,
+    roleName: string,
+  ): Promise<string | null> {
     try {
-      const endpoint = `guilds/${this.guildId}/roles`;
+      const endpoint = `guilds/${guildId}/roles`;
       const response = await this.httpService.discordRequest({
         endpoint,
         options: {
@@ -102,21 +100,30 @@ export class DiscordService {
     }
   }
 
-  async createGroupTextAndVoiceChannels(groupName: string): Promise<boolean> {
+  async createGroupTextAndVoiceChannels(
+    guildId: string,
+    groupName: string,
+  ): Promise<boolean> {
     try {
-      const roleId = await this.createRole(groupName);
+      const roleId = await this.createRole(guildId, groupName);
 
       // Get the text category ID
-      const textCategoryId = await this.getChannelByName(this.textChannelName);
+      const textCategoryId = await this.getChannelByName(
+        guildId,
+        this.textChannelName,
+      );
       // Get the voice category ID
-      const voiceCategoryId = await this.getChannelByName(this.voiceChannelName);
+      const voiceCategoryId = await this.getChannelByName(
+        guildId,
+        this.voiceChannelName,
+      );
 
       if (!textCategoryId || !voiceCategoryId)
         this.logger.error('Required categories not found');
 
       const permissionOverwrites: PermissionOverwriteData[] = [
         {
-          id: this.guildId,
+          id: guildId,
           type: OverwriteType.Role,
           deny: PermissionsBitField.Flags.ViewChannel,
         },
@@ -129,6 +136,7 @@ export class DiscordService {
 
       // Create text channel in grupos-de-tps category
       await this.createChannel(
+        guildId,
         groupName,
         ChannelTypes.GUILD_TEXT,
         permissionOverwrites,
@@ -136,6 +144,7 @@ export class DiscordService {
       );
 
       await this.createChannel(
+        guildId,
         groupName,
         ChannelTypes.GUILD_VOICE,
         permissionOverwrites,
@@ -150,6 +159,7 @@ export class DiscordService {
   }
 
   async sendConfirmationMessage(
+    guildId: string,
     channelId: string,
     groupName: string,
     userIds: string[],
@@ -165,6 +175,7 @@ export class DiscordService {
 
     // Start watching for reactions
     this.watchConfirmations(
+      guildId,
       channelId,
       messageData.id,
       groupName,
@@ -176,6 +187,7 @@ export class DiscordService {
   }
 
   private watchConfirmations(
+    guildId: string,
     channelId: string,
     messageId: string,
     groupName: string,
@@ -198,19 +210,13 @@ export class DiscordService {
           if (allConfirmed) {
             clearInterval(interval);
 
-            await this.createGroupTextAndVoiceChannels(groupName);
-
-            // Assign roles to all users
-            const roleId = await this.getRoleByName(groupName);
-            requiredUserIds.push(creatorId);
-            await Promise.all(
-              requiredUserIds.map((userId) =>
-                this.assignRoleToUser(userId, roleId),
-              ),
+            this.generateGroup(
+              groupName,
+              requiredUserIds,
+              creatorId,
+              channelId,
+              guildId,
             );
-
-            const message = `El grupo "${groupName}" ha sido creado exitosamente!`;
-            await this.sendDiscordMessage(channelId, message);
           }
         } catch (error) {
           this.logger.error(`Error checking reactions: ${error}`);
@@ -224,9 +230,35 @@ export class DiscordService {
       Duration.fromObject({ seconds: 40 }).toMillis(),
     );
   }
+  async generateGroup(
+    groupName: string,
+    requiredUserIds: string[],
+    creatorId: string,
+    channelId: string,
+    guildId: string,
+  ): Promise<void> {
+    await this.createGroupTextAndVoiceChannels(guildId, groupName);
 
-  async assignRoleToUser(userId: string, roleId: string): Promise<void> {
-    const endpoint = `guilds/${this.guildId}/members/${userId}/roles/${roleId}`;
+    // Assign roles to all users
+    const roleId = await this.getRoleByName(guildId, groupName);
+    if (creatorId) {
+      requiredUserIds.push(creatorId);
+    }
+    await Promise.all(
+      requiredUserIds.map((userId) =>
+        this.assignRoleToUser(guildId, userId, roleId),
+      ),
+    );
+
+    const message = `El grupo "${groupName}" ha sido creado exitosamente!`;
+    await this.sendDiscordMessage(channelId, message);
+  }
+  async assignRoleToUser(
+    guildId: string,
+    userId: string,
+    roleId: string,
+  ): Promise<void> {
+    const endpoint = `guilds/${guildId}/members/${userId}/roles/${roleId}`;
     const options = { method: 'PUT' };
 
     try {
@@ -237,8 +269,8 @@ export class DiscordService {
     }
   }
 
-  private async createRole(roleName: string) {
-    const endpoint = `guilds/${this.guildId}/roles`;
+  private async createRole(guildId: string, roleName: string) {
+    const endpoint = `guilds/${guildId}/roles`;
     const body = JSON.stringify({
       name: roleName,
       permissions: '0',
@@ -265,12 +297,13 @@ export class DiscordService {
   }
 
   private async createChannel(
+    guildId: string,
     channelName: string,
     channelType: number,
     permissions: PermissionOverwriteData[],
     categoryId?: string,
   ) {
-    const endpoint = `guilds/${this.guildId}/channels`;
+    const endpoint = `guilds/${guildId}/channels`;
     const body = JSON.stringify(
       {
         name: `${channelName.toLowerCase().replace(/\s+/g, '-')}`,
