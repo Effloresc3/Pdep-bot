@@ -1,4 +1,4 @@
-FROM node:25-alpine AS build-stage
+FROM node:latest AS build-stage
 
 WORKDIR /app
 
@@ -10,7 +10,7 @@ COPY . .
 
 RUN npm run build 
 
-FROM node:25-alpine AS final-stage
+FROM node:latest AS final-stage
 
 WORKDIR /app
 
