@@ -4,8 +4,8 @@ services:
     image:
       repository: ghcr.io/effloresc3/pdep-bot-app
       source:
-        type: registry
-        allowTags: ^latest$ 
+        type: digest 
+        tag: latest
     # secrets:
     #   - config
     routes:
