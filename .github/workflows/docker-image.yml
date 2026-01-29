@@ -32,4 +32,4 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           push: true
-          tags: ghcr.io/effloresc3/pdep-bot:latest
+          tags: ghcr.io/effloresc3/pdep-bot-app:latest
