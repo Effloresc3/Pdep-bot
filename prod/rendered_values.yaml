@@ -6,8 +6,8 @@ services:
       source:
         type: digest 
         tag: latest
-    # secrets:
-    #   - config
+    secrets:
+      - config
     routes:
       - host: pdepbot.ludat.io
 
